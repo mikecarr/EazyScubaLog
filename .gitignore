@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 
+bin/
 data/raw/**/*.bin
 data/xml/**/*.xml
 logs/*.log

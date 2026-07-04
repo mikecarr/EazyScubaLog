@@ -1059,7 +1059,7 @@ do {
     if let next = firstMissingIndex(records: records, downloaded: afterDownloaded) {
         let nextCount = count ?? limit ?? selected.count
         let targetArgument = requestedTarget.map { "--target \($0) " } ?? ""
-        log("Next batch command: /tmp/shearwater_download \(targetArgument)--start \(next) --count \(nextCount) --skip-existing --output-dir \(baseOutputDir.path) --xml-dir \(baseXmlDir.path) --log-dir \(logDir)")
+        log("Next batch command: bin/shearwater_download \(targetArgument)--start \(next) --count \(nextCount) --skip-existing --output-dir \(baseOutputDir.path) --xml-dir \(baseXmlDir.path) --log-dir \(logDir)")
     } else {
         log("All \(records.count) dives are downloaded.")
     }

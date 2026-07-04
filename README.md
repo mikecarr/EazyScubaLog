@@ -65,7 +65,8 @@ Compile the downloader once and reuse the binary during repeated Bluetooth
 windows:
 
 ```sh
-swiftc tools/shearwater_download.swift -o /tmp/shearwater_download
+mkdir -p bin
+swiftc tools/shearwater_download.swift -o bin/shearwater_download
 ```
 
 ## Recommended Download Workflow
@@ -74,7 +75,7 @@ Run a batch. If `--start` is omitted, the downloader scans the raw output
 directory for the connected computer and starts at the first missing dive.
 
 ```sh
-/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw
+bin/shearwater_download --count 10 --skip-existing --output-dir data/raw
 ```
 
 At startup it prompts:
@@ -99,7 +100,7 @@ After the batch, it logs an updated summary and a ready-to-run next command:
 
 ```text
 After download: found 546 dives in 12 manifest pages; 27 downloaded, 519 remaining; next missing dive is 28
-Next batch command: /tmp/shearwater_download --start 28 --count 10 --skip-existing --output-dir ... --log-dir logs
+Next batch command: bin/shearwater_download --start 28 --count 10 --skip-existing --output-dir ... --log-dir logs
 ```
 
 At the end of each batch it prompts to convert that batch to XML. The default is
@@ -117,56 +118,56 @@ the Perdix to leave Bluetooth/upload mode.
 List all available dive records without downloading dive bodies:
 
 ```sh
-/tmp/shearwater_download --list-only --output-dir data/raw
+bin/shearwater_download --list-only --output-dir data/raw
 ```
 
 Download a specific batch:
 
 ```sh
-/tmp/shearwater_download --start 28 --count 10 --skip-existing --output-dir data/raw
+bin/shearwater_download --start 28 --count 10 --skip-existing --output-dir data/raw
 ```
 
 Download one dive as a validation run:
 
 ```sh
-/tmp/shearwater_download --count 1 --skip-existing --output-dir data/raw
+bin/shearwater_download --count 1 --skip-existing --output-dir data/raw
 ```
 
 Skip the startup Bluetooth prompt for unattended/scripted runs:
 
 ```sh
-/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw --no-prompt
+bin/shearwater_download --count 10 --skip-existing --output-dir data/raw --no-prompt
 ```
 
 Skip the XML conversion prompt:
 
 ```sh
-/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw --no-convert-prompt
+bin/shearwater_download --count 10 --skip-existing --output-dir data/raw --no-convert-prompt
 ```
 
 Override the XML output directory:
 
 ```sh
-/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml
+bin/shearwater_download --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml
 ```
 
 Force a specific advertised name or UUID instead of auto-discovery:
 
 ```sh
-/tmp/shearwater_download --target Petrel --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml
+bin/shearwater_download --target Petrel --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml
 ```
 
 Override the `dctool` parser used for XML conversion:
 
 ```sh
-/tmp/shearwater_download --target Petrel --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml --dctool-device "Shearwater Petrel 3"
+bin/shearwater_download --target Petrel --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml --dctool-device "Shearwater Petrel 3"
 ```
 
 Each downloader run writes a timestamped log to `logs/` by default. Override it
 with:
 
 ```sh
-/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw --log-dir logs
+bin/shearwater_download --count 10 --skip-existing --output-dir data/raw --log-dir logs
 ```
 
 ## Convert Existing Raw Files
@@ -378,7 +379,7 @@ could desynchronize the transfer.
 Practical tips:
 
 - Keep the Perdix close to the Mac.
-- Use `/tmp/shearwater_download`, not `swift tools/shearwater_download.swift`,
+- Use `bin/shearwater_download`, not `swift tools/shearwater_download.swift`,
   during repeated runs.
 - Use `--skip-existing` on every batch.
 - Use batch sizes that fit inside the Perdix Bluetooth timeout.
@@ -388,4 +389,4 @@ Practical tips:
 
 `scripts/perdix_fetch.py` is the original wrapper around `dctool download`.
 It remains in the repo for reference, but the current working download path on
-this machine is `/tmp/shearwater_download`.
+this machine is `bin/shearwater_download`.
