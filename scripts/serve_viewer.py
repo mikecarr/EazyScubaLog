@@ -162,6 +162,30 @@ def sac_summary(tanks: list[dict[str, object]], divetime_seconds: int | None, av
     return result
 
 
+def average_sample_depth(samples: list[ET.Element]) -> float | None:
+    points = [
+        (parse_minutes(text(sample.find("time"))), number(text(sample.find("depth"))))
+        for sample in samples
+    ]
+    points = [(time, depth) for time, depth in points if time is not None and depth is not None]
+    if len(points) < 2:
+        depths = [depth for _, depth in points]
+        return sum(depths) / len(depths) if depths else None
+
+    points.sort(key=lambda point: point[0])
+    area = 0.0
+    duration = 0
+    previous_time, previous_depth = points[0]
+    for current_time, current_depth in points[1:]:
+        interval = current_time - previous_time
+        if interval > 0:
+            area += ((previous_depth + current_depth) / 2) * interval
+            duration += interval
+        previous_time, previous_depth = current_time, current_depth
+
+    return area / duration if duration > 0 else None
+
+
 def parse_summary(path: Path, xml_dir: Path = DEFAULT_XML_DIR) -> dict[str, object]:
     dive = parse_dive_root(path)
     file_number, fingerprint = path_metadata(path)
@@ -172,7 +196,7 @@ def parse_summary(path: Path, xml_dir: Path = DEFAULT_XML_DIR) -> dict[str, obje
     tanks = [tank_summary(tank) for tank in dive.findall("tank")]
     gasmixes = [gasmix_label(gas) for gas in dive.findall("gasmix")]
     divetime_seconds = parse_minutes(text(dive.find("divetime")))
-    avg_depth = number(text(dive.find("avgdepth")))
+    avg_depth = number(text(dive.find("avgdepth"))) or average_sample_depth(samples)
 
     return {
         "id": path.relative_to(xml_dir).as_posix(),
