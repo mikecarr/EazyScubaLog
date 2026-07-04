@@ -65,6 +65,12 @@ struct DiveRecord {
     let address: UInt32
 }
 
+struct DiscoveredDevice {
+    let name: String
+    let uuid: String
+    let rssi: Int
+}
+
 enum DownloadError: Error, CustomStringConvertible {
     case timeout(String)
     case bluetoothState(Int)
@@ -80,6 +86,72 @@ enum DownloadError: Error, CustomStringConvertible {
         case .protocolError(let message): return "Protocol error: \(message)"
         case .filesystem(let message): return "Filesystem error: \(message)"
         }
+    }
+}
+
+final class ShearwaterScanner: NSObject, CBCentralManagerDelegate {
+    private var central: CBCentralManager!
+    private var devicesByUUID: [String: DiscoveredDevice] = [:]
+    private var finished = false
+    private let timeout: TimeInterval
+
+    init(timeout: TimeInterval) {
+        self.timeout = timeout
+        super.init()
+        self.central = CBCentralManager(delegate: self, queue: nil)
+    }
+
+    func scan() throws -> [DiscoveredDevice] {
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            self.finished = true
+            self.central.stopScan()
+        }
+
+        while !finished {
+            RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        if central.state != .poweredOn {
+            throw DownloadError.bluetoothState(central.state.rawValue)
+        }
+
+        return devicesByUUID.values.sorted {
+            if $0.rssi == $1.rssi {
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            return $0.rssi > $1.rssi
+        }
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        guard central.state == .poweredOn else {
+            finished = true
+            return
+        }
+
+        central.scanForPeripherals(withServices: nil, options: [
+            CBCentralManagerScanOptionAllowDuplicatesKey: true
+        ])
+    }
+
+    func centralManager(
+        _ central: CBCentralManager,
+        didDiscover peripheral: CBPeripheral,
+        advertisementData: [String: Any],
+        rssi RSSI: NSNumber
+    ) {
+        let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let name = peripheral.name ?? localName ?? ""
+        guard isLikelyShearwater(name: name, advertisementData: advertisementData) else {
+            return
+        }
+
+        let uuid = peripheral.identifier.uuidString
+        devicesByUUID[uuid] = DiscoveredDevice(
+            name: name.isEmpty ? "(unnamed)" : name,
+            uuid: uuid,
+            rssi: RSSI.intValue
+        )
     }
 }
 
@@ -749,6 +821,14 @@ func argumentValue(_ name: String, default defaultValue: String) -> String {
     return args[index + 1]
 }
 
+func argumentValue(_ name: String) -> String? {
+    let args = CommandLine.arguments
+    guard let index = args.firstIndex(of: name), index + 1 < args.count else {
+        return nil
+    }
+    return args[index + 1]
+}
+
 func argumentInt(_ name: String) -> Int? {
     let args = CommandLine.arguments
     guard let index = args.firstIndex(of: name), index + 1 < args.count else {
@@ -774,6 +854,51 @@ func promptForBluetoothMode(target: String) {
     _ = readLine()
 }
 
+func isLikelyShearwater(name: String, advertisementData: [String: Any]) -> Bool {
+    let lower = name.lowercased()
+    let modelTokens = [
+        "perdix",
+        "petrel",
+        "teric",
+        "peregrine",
+        "predator",
+        "nerd",
+        "tern",
+    ]
+    if modelTokens.contains(where: { lower.contains($0) }) {
+        return true
+    }
+
+    let services = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
+    return services.contains { $0 == serviceUUID }
+}
+
+func chooseDevice(_ devices: [DiscoveredDevice]) throws -> DiscoveredDevice {
+    guard !devices.isEmpty else {
+        throw DownloadError.timeout("no Shearwater-compatible Bluetooth devices found")
+    }
+    if devices.count == 1 {
+        let device = devices[0]
+        log("Selected \(device.name) \(device.uuid) RSSI=\(device.rssi)")
+        return device
+    }
+
+    log("Found multiple Shearwater-compatible devices:")
+    for (index, device) in devices.enumerated() {
+        log("  \(index + 1). \(device.name) \(device.uuid) RSSI=\(device.rssi)")
+    }
+    log("Choose a device [1-\(devices.count)]: ")
+    while true {
+        let answer = (readLine() ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if let choice = Int(answer), choice >= 1, choice <= devices.count {
+            let device = devices[choice - 1]
+            log("Selected \(device.name) \(device.uuid) RSSI=\(device.rssi)")
+            return device
+        }
+        log("Enter a number from 1 to \(devices.count): ")
+    }
+}
+
 func defaultDctoolDevice(for target: String) -> String {
     let lower = target.lowercased()
     if lower.contains("petrel") {
@@ -785,10 +910,10 @@ func defaultDctoolDevice(for target: String) -> String {
     return "Shearwater Perdix AI"
 }
 
-let target = argumentValue("--target", default: "Perdix")
+let requestedTarget = argumentValue("--target")
 let baseOutputDir = URL(fileURLWithPath: argumentValue("--output-dir", default: "data/raw"))
 let baseXmlDir = URL(fileURLWithPath: argumentValue("--xml-dir", default: "data/xml"))
-let dctoolDevice = argumentValue("--dctool-device", default: defaultDctoolDevice(for: target))
+let requestedDctoolDevice = argumentValue("--dctool-device")
 let logDir = argumentValue("--log-dir", default: "logs")
 let limit = argumentInt("--limit")
 let explicitStart = argumentInt("--start")
@@ -802,14 +927,31 @@ let noConvertPrompt = hasArgument("--no-convert-prompt")
 let overwriteXML = hasArgument("--overwrite-xml")
 logger = RunLogger(directory: logDir)
 log("Command: \(CommandLine.arguments.joined(separator: " "))")
-log("dctool device: \(dctoolDevice)")
 
 do {
     try FileManager.default.createDirectory(at: baseOutputDir, withIntermediateDirectories: true)
 
     if !noPrompt {
-        promptForBluetoothMode(target: target)
+        promptForBluetoothMode(target: requestedTarget ?? "your Shearwater computer")
     }
+
+    let target: String
+    let deviceName: String
+    if let requestedTarget {
+        target = requestedTarget
+        deviceName = requestedTarget
+    } else {
+        log("Scanning for Shearwater-compatible dive computers...")
+        let scanner = ShearwaterScanner(timeout: 20)
+        let devices = try scanner.scan()
+        let selected = try chooseDevice(devices)
+        target = selected.uuid
+        deviceName = selected.name
+    }
+    let dctoolDevice = requestedDctoolDevice ?? defaultDctoolDevice(for: deviceName)
+    log("target: \(target)")
+    log("device name: \(deviceName)")
+    log("dctool device: \(dctoolDevice)")
 
     let client = ShearwaterClient(target: target)
     try client.start(timeout: 20)
@@ -823,7 +965,7 @@ do {
     log("firmware: \(ascii(firmware))")
     log("model: \(hex(model))")
     log("logupload: \(hex(logUpload))")
-    let deviceStorageKey = storageKey(target: target, serial: ascii(serial), model: hex(model))
+    let deviceStorageKey = storageKey(target: deviceName, serial: ascii(serial), model: hex(model))
     log("storage key: \(deviceStorageKey)")
 
     let baseAddress = uint32BE(logUpload, offset: 1)
@@ -916,7 +1058,8 @@ do {
     let afterDownloaded = logStats(label: "After download", records: records, pages: pages, outputDir: outputDir)
     if let next = firstMissingIndex(records: records, downloaded: afterDownloaded) {
         let nextCount = count ?? limit ?? selected.count
-        log("Next batch command: /tmp/shearwater_download --target \(target) --start \(next) --count \(nextCount) --skip-existing --output-dir \(baseOutputDir.path) --xml-dir \(baseXmlDir.path) --log-dir \(logDir)")
+        let targetArgument = requestedTarget.map { "--target \($0) " } ?? ""
+        log("Next batch command: /tmp/shearwater_download \(targetArgument)--start \(next) --count \(nextCount) --skip-existing --output-dir \(baseOutputDir.path) --xml-dir \(baseXmlDir.path) --log-dir \(logDir)")
     } else {
         log("All \(records.count) dives are downloaded.")
     }

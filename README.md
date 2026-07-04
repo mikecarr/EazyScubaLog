@@ -74,16 +74,20 @@ Run a batch. If `--start` is omitted, the downloader scans the raw output
 directory for the connected computer and starts at the first missing dive.
 
 ```sh
-/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw
+/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw
 ```
 
 At startup it prompts:
 
 ```text
-Put Perdix into Bluetooth/upload mode, then press Enter to start scanning.
+Put your Shearwater computer into Bluetooth/upload mode, then press Enter to start scanning.
 ```
 
-Put the Perdix into Bluetooth/upload mode, then press Enter.
+Put the dive computer into Bluetooth/upload mode, then press Enter. If one
+Shearwater-compatible computer is found, it is selected automatically. If more
+than one is found, the downloader lists them and asks which one to use. The
+selected advertised name is also used to choose the default `dctool` conversion
+device, for example `Shearwater Perdix AI` or `Shearwater Petrel 3`.
 
 Before downloading, it logs a summary like:
 
@@ -95,7 +99,7 @@ After the batch, it logs an updated summary and a ready-to-run next command:
 
 ```text
 After download: found 546 dives in 12 manifest pages; 27 downloaded, 519 remaining; next missing dive is 28
-Next batch command: /tmp/shearwater_download --target Perdix --start 28 --count 10 --skip-existing --output-dir ... --log-dir logs
+Next batch command: /tmp/shearwater_download --start 28 --count 10 --skip-existing --output-dir ... --log-dir logs
 ```
 
 At the end of each batch it prompts to convert that batch to XML. The default is
@@ -113,44 +117,56 @@ the Perdix to leave Bluetooth/upload mode.
 List all available dive records without downloading dive bodies:
 
 ```sh
-/tmp/shearwater_download --target Perdix --list-only --output-dir data/raw
+/tmp/shearwater_download --list-only --output-dir data/raw
 ```
 
 Download a specific batch:
 
 ```sh
-/tmp/shearwater_download --target Perdix --start 28 --count 10 --skip-existing --output-dir data/raw
+/tmp/shearwater_download --start 28 --count 10 --skip-existing --output-dir data/raw
 ```
 
 Download one dive as a validation run:
 
 ```sh
-/tmp/shearwater_download --target Perdix --count 1 --skip-existing --output-dir data/raw
+/tmp/shearwater_download --count 1 --skip-existing --output-dir data/raw
 ```
 
 Skip the startup Bluetooth prompt for unattended/scripted runs:
 
 ```sh
-/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw --no-prompt
+/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw --no-prompt
 ```
 
 Skip the XML conversion prompt:
 
 ```sh
-/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw --no-convert-prompt
+/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw --no-convert-prompt
 ```
 
 Override the XML output directory:
 
 ```sh
-/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml
+/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml
+```
+
+Force a specific advertised name or UUID instead of auto-discovery:
+
+```sh
+/tmp/shearwater_download --target Petrel --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml
+```
+
+Override the `dctool` parser used for XML conversion:
+
+```sh
+/tmp/shearwater_download --target Petrel --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml --dctool-device "Shearwater Petrel 3"
 ```
 
 Each downloader run writes a timestamped log to `logs/` by default. Override it
 with:
 
 ```sh
-/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw --log-dir logs
+/tmp/shearwater_download --count 10 --skip-existing --output-dir data/raw --log-dir logs
 ```
 
 ## Convert Existing Raw Files
