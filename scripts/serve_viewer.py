@@ -18,7 +18,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 VIEWER_DIR = REPO_ROOT / "viewer"
 DEFAULT_XML_DIR = REPO_ROOT / "data" / "xml"
 DEFAULT_RAW_DIR = REPO_ROOT / "data" / "raw"
+DEFAULT_LOG_DIR = REPO_ROOT / "logs"
 DIVE_FILE_RE = re.compile(r"perdix-ai\.(\d{4})\.([0-9A-Fa-f]+)\.xml$")
+RAW_FILE_RE = re.compile(r"perdix-ai\.(\d{4})\.([0-9A-Fa-f]+)\.bin$")
 DEFAULT_COMPUTER = "Shearwater Perdix AI"
 
 
@@ -51,6 +53,15 @@ def xml_files(xml_dir: Path) -> list[Path]:
 
 def raw_count(raw_dir: Path) -> int:
     return len(list(raw_dir.rglob("perdix-ai.*.*.bin")))
+
+
+def raw_numbers(raw_dir: Path) -> set[int]:
+    numbers = set()
+    for path in raw_dir.rglob("perdix-ai.*.*.bin"):
+        match = RAW_FILE_RE.match(path.name)
+        if match:
+            numbers.add(int(match.group(1)))
+    return numbers
 
 
 def parse_dive_root(path: Path) -> ET.Element:
@@ -281,6 +292,38 @@ def parse_detail(path: Path, xml_dir: Path = DEFAULT_XML_DIR) -> dict[str, objec
     }
 
 
+def import_status(raw_dir: Path, log_dir: Path = DEFAULT_LOG_DIR) -> dict[str, object]:
+    manifest_count = None
+    failed: dict[int, str] = {}
+    last_failure = ""
+    for log_path in sorted(log_dir.glob("shearwater-download-*.log")):
+        for line in log_path.read_text(errors="ignore").splitlines():
+            manifest_match = re.search(r"Manifest contains (\d+) active dive records", line)
+            if manifest_match:
+                manifest_count = int(manifest_match.group(1))
+            failed_match = re.search(r"Failed dive (\d+).*: (.+)$", line)
+            if failed_match:
+                dive_number = int(failed_match.group(1))
+                reason = failed_match.group(2)
+                failed[dive_number] = reason
+                last_failure = reason
+
+    downloaded = raw_numbers(raw_dir)
+    missing = []
+    if manifest_count:
+        missing = [number for number in range(1, manifest_count + 1) if number not in downloaded]
+
+    return {
+        "manifestCount": manifest_count,
+        "downloadedRawCount": len(downloaded),
+        "missingRawCount": len(missing),
+        "missingRaw": missing,
+        "failedCount": len(failed),
+        "failedDives": [{"number": number, "reason": reason} for number, reason in sorted(failed.items())],
+        "lastFailure": last_failure,
+    }
+
+
 def summaries(xml_dir: Path, raw_dir: Path) -> dict[str, object]:
     dives = []
     errors = []
@@ -295,6 +338,7 @@ def summaries(xml_dir: Path, raw_dir: Path) -> dict[str, object]:
         "dives": dives,
         "xmlCount": len(dives),
         "rawCount": raw_count(raw_dir),
+        "status": import_status(raw_dir),
         "errors": errors,
     }
 

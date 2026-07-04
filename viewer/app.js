@@ -1,5 +1,6 @@
 const state = {
   dives: [],
+  importStatus: null,
   selected: null,
   view: localStorage.getItem("dclvView") || "dives",
   query: "",
@@ -39,6 +40,7 @@ const els = {
   summaryMetrics: document.getElementById("summary-metrics"),
   summaryHighlights: document.getElementById("summary-highlights"),
   summaryBreakdown: document.getElementById("summary-breakdown"),
+  summaryImportStatus: document.getElementById("summary-import-status"),
 };
 
 function fmt(value, suffix = "") {
@@ -254,6 +256,7 @@ async function loadSummaries() {
   if (!response.ok) throw new Error(`Failed to load dives: ${response.status}`);
   const data = await response.json();
   state.dives = data.dives || [];
+  state.importStatus = data.status || null;
   renderComputerFilter();
   renderList();
   renderSummary();
@@ -305,6 +308,24 @@ function summaryRow(label, value) {
   return `<div class="summary-row"><span>${label}</span><span>${value}</span></div>`;
 }
 
+function formatNumberRange(numbers) {
+  if (!numbers?.length) return "—";
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const ranges = [];
+  let start = sorted[0];
+  let previous = sorted[0];
+  for (const number of sorted.slice(1)) {
+    if (number === previous + 1) {
+      previous = number;
+      continue;
+    }
+    ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
+    start = previous = number;
+  }
+  ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
+  return ranges.join(", ");
+}
+
 function renderSummary() {
   if (!els.summaryMetrics) return;
   const dives = filteredDives();
@@ -354,6 +375,17 @@ function renderSummary() {
     .map(([gas, count]) => summaryRow(`Gas: ${gas}`, count))
     .join("");
   els.summaryBreakdown.innerHTML = modeRows + gasRows || summaryRow("No dives", "—");
+
+  const status = state.importStatus || {};
+  const failedNumbers = (status.failedDives || []).map((dive) => dive.number);
+  els.summaryImportStatus.innerHTML = [
+    summaryRow("Manifest records", fmt(status.manifestCount)),
+    summaryRow("Raw dives downloaded", fmt(status.downloadedRawCount)),
+    summaryRow("XML dives converted", fmt(state.dives.length)),
+    summaryRow("Missing raw records", fmt(status.missingRawCount)),
+    summaryRow("Known failed records", formatNumberRange(failedNumbers)),
+    summaryRow("Last failure", status.lastFailure || "—"),
+  ].join("");
 }
 
 async function selectDive(id) {
