@@ -23,7 +23,7 @@ def output_name(raw_file: Path, output_dir: Path) -> Path:
     return output_dir / relative.parent / (raw_file.stem + ".xml")
 
 
-def convert_file(raw_file: Path, output_dir: Path, overwrite: bool) -> int:
+def convert_file(raw_file: Path, output_dir: Path, device: str, overwrite: bool) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     xml_file = output_name(raw_file, output_dir)
     if xml_file.exists() and not overwrite:
@@ -33,7 +33,7 @@ def convert_file(raw_file: Path, output_dir: Path, overwrite: bool) -> int:
     command = [
         "dctool",
         "-d",
-        DEVICE_NAME,
+        device,
         "parse",
         "-o",
         str(xml_file),
@@ -61,6 +61,11 @@ def main(argv: list[str]) -> int:
         help="directory for XML files; default: data/xml",
     )
     parser.add_argument(
+        "--device",
+        default=DEVICE_NAME,
+        help=f"dctool device name; default: {DEVICE_NAME}",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="overwrite existing XML files",
@@ -78,7 +83,7 @@ def main(argv: list[str]) -> int:
             print(f"Missing input: {raw_file}", file=sys.stderr)
             failed += 1
             continue
-        rc = convert_file(raw_file, args.output_dir, args.overwrite)
+        rc = convert_file(raw_file, args.output_dir, args.device, args.overwrite)
         if rc:
             failed += 1
 

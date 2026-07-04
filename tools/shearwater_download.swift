@@ -643,7 +643,7 @@ func promptYesNo(_ message: String, defaultYes: Bool) -> Bool {
     return answer == "y" || answer == "yes"
 }
 
-func convertRawToXML(records: [DiveRecord], outputDir: URL, xmlDir: URL, overwrite: Bool) {
+func convertRawToXML(records: [DiveRecord], outputDir: URL, xmlDir: URL, dctoolDevice: String, overwrite: Bool) {
     do {
         try FileManager.default.createDirectory(at: xmlDir, withIntermediateDirectories: true)
     } catch {
@@ -676,7 +676,7 @@ func convertRawToXML(records: [DiveRecord], outputDir: URL, xmlDir: URL, overwri
         process.arguments = [
             "dctool",
             "-d",
-            "Shearwater Perdix AI",
+            dctoolDevice,
             "parse",
             "-o",
             xml.path,
@@ -688,7 +688,7 @@ func convertRawToXML(records: [DiveRecord], outputDir: URL, xmlDir: URL, overwri
         process.standardError = pipe
 
         do {
-            log("Converting \(raw.path) -> \(xml.path)")
+            log("Converting \(raw.path) -> \(xml.path) using \(dctoolDevice)")
             try process.run()
             process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
@@ -774,9 +774,21 @@ func promptForBluetoothMode(target: String) {
     _ = readLine()
 }
 
+func defaultDctoolDevice(for target: String) -> String {
+    let lower = target.lowercased()
+    if lower.contains("petrel") {
+        return "Shearwater Petrel 3"
+    }
+    if lower.contains("perdix") {
+        return "Shearwater Perdix AI"
+    }
+    return "Shearwater Perdix AI"
+}
+
 let target = argumentValue("--target", default: "Perdix")
 let baseOutputDir = URL(fileURLWithPath: argumentValue("--output-dir", default: "data/raw"))
 let baseXmlDir = URL(fileURLWithPath: argumentValue("--xml-dir", default: "data/xml"))
+let dctoolDevice = argumentValue("--dctool-device", default: defaultDctoolDevice(for: target))
 let logDir = argumentValue("--log-dir", default: "logs")
 let limit = argumentInt("--limit")
 let explicitStart = argumentInt("--start")
@@ -790,6 +802,7 @@ let noConvertPrompt = hasArgument("--no-convert-prompt")
 let overwriteXML = hasArgument("--overwrite-xml")
 logger = RunLogger(directory: logDir)
 log("Command: \(CommandLine.arguments.joined(separator: " "))")
+log("dctool device: \(dctoolDevice)")
 
 do {
     try FileManager.default.createDirectory(at: baseOutputDir, withIntermediateDirectories: true)
@@ -909,7 +922,7 @@ do {
     }
 
     if !listOnly && !noConvertPrompt && promptYesNo("Convert this batch to XML?", defaultYes: true) {
-        convertRawToXML(records: selected, outputDir: outputDir, xmlDir: xmlDir, overwrite: overwriteXML)
+        convertRawToXML(records: selected, outputDir: outputDir, xmlDir: xmlDir, dctoolDevice: dctoolDevice, overwrite: overwriteXML)
     }
     client.shutdownBluetoothMode()
 } catch {
