@@ -3,6 +3,21 @@
 Download and view dive logs from dive computers in small, resumable batches
 without building one huge in-memory export.
 
+## Project Motivation
+
+This app exists because large dive-log imports can fail in the existing apps I
+tried. With hundreds of dives, the transfer can time out or the importer can run
+out of memory before anything useful is saved.
+
+The goal is to make export incremental and recoverable:
+
+- Download one dive at a time.
+- Write each raw dive to disk immediately.
+- Resume from the first missing dive after a Bluetooth timeout.
+- Convert and view whatever has already been downloaded while the rest of the
+  logbook is still in progress.
+- Avoid building one huge in-memory export object.
+
 The current working downloader targets a Shearwater Perdix AI using the native
 macOS CoreBluetooth tool in `tools/shearwater_download.swift`. The viewer is
 named more generally so additional dive computers can be added later. The
