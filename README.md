@@ -169,6 +169,12 @@ Open:
 http://127.0.0.1:8080
 ```
 
+Screenshots below use redacted demo values in the visible list/detail fields.
+
+![Dive Computer Log Viewer light theme](docs/screenshots/viewer-light.png)
+
+![Dive Computer Log Viewer dark theme](docs/screenshots/viewer-dark.png)
+
 The viewer reads `data/xml/**/*.xml` on demand. You can keep downloading and
 converting dives in another terminal; click **Refresh** in the browser to rescan
 the XML directory.
