@@ -188,6 +188,7 @@ final class ShearwaterClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
             }
         }
 
+        let missingCompressedTerminator = compression && !done
         if compression {
             xorDecompress(&output)
         }
@@ -195,6 +196,9 @@ final class ShearwaterClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
         let quitResponse = try transfer([0x37], timeout: 10)
         guard quitResponse.count == 2 && quitResponse[0] == 0x77 && quitResponse[1] == 0x00 else {
             throw DownloadError.protocolError("unexpected download quit response \(hex(quitResponse))")
+        }
+        if missingCompressedTerminator {
+            throw DownloadError.protocolError("compressed dive ended before LRE terminator")
         }
 
         return output
@@ -593,6 +597,30 @@ func firstMissingIndex(records: [DiveRecord], downloaded: Set<Int>) -> Int? {
     records.first { !downloaded.contains($0.index) }?.index
 }
 
+func boundedDiveSize(for record: DiveRecord, records: [DiveRecord]) -> Int? {
+    guard record.index > 1, record.index - 2 < records.count else {
+        return nil
+    }
+    let newerRecord = records[record.index - 2]
+    guard newerRecord.address > record.address else {
+        return nil
+    }
+    let gap = newerRecord.address - record.address
+    return gap > 0 && gap < UInt32(maxDiveSize) ? Int(gap) : nil
+}
+
+func downloadDive(client: ShearwaterClient, record: DiveRecord, records: [DiveRecord], address: UInt32) throws -> [UInt8] {
+    do {
+        return try client.download(address: address, size: maxDiveSize, compression: true)
+    } catch DownloadError.protocolError(let message) where message.contains("unexpected download init response 7F3531") {
+        if let boundedSize = boundedDiveSize(for: record, records: records) {
+            log(String(format: "Open-ended download was rejected; retrying dive %04d with manifest-bounded size %d bytes", record.index, boundedSize))
+            return try client.download(address: address, size: boundedSize, compression: true)
+        }
+        throw DownloadError.protocolError(message)
+    }
+}
+
 func logStats(label: String, records: [DiveRecord], pages: Int, outputDir: URL) -> Set<Int> {
     let downloaded = downloadedRecordIndexes(records: records, outputDir: outputDir)
     let missing = max(records.count - downloaded.count, 0)
@@ -729,6 +757,14 @@ func argumentInt(_ name: String) -> Int? {
     return Int(args[index + 1])
 }
 
+func argumentIntSet(_ name: String) -> Set<Int> {
+    let args = CommandLine.arguments
+    guard let index = args.firstIndex(of: name), index + 1 < args.count else {
+        return []
+    }
+    return Set(args[index + 1].split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) })
+}
+
 func hasArgument(_ name: String) -> Bool {
     CommandLine.arguments.contains(name)
 }
@@ -747,6 +783,8 @@ let explicitStart = argumentInt("--start")
 let count = argumentInt("--count")
 let listOnly = hasArgument("--list-only")
 let skipExisting = hasArgument("--skip-existing")
+let skipDives = argumentIntSet("--skip-dives")
+let continueOnError = hasArgument("--continue-on-error")
 let noPrompt = hasArgument("--no-prompt")
 let noConvertPrompt = hasArgument("--no-convert-prompt")
 let overwriteXML = hasArgument("--overwrite-xml")
@@ -819,10 +857,16 @@ do {
     let batchStarted = Date()
     var completed = 0
     var downloaded = 0
+    var failed: [Int] = []
     for record in selected {
         let address = normalizedBase &+ record.address
         let filename = String(format: "perdix-ai.%04d.%@.bin", record.index, hex(record.fingerprint))
         let url = outputDir.appendingPathComponent(filename)
+        if skipDives.contains(record.index) {
+            log("Skipping requested dive \(record.index)")
+            completed += 1
+            continue
+        }
         if skipExisting && FileManager.default.fileExists(atPath: url.path) {
             log("Skipping existing \(url.path)")
             completed += 1
@@ -831,18 +875,31 @@ do {
 
         log("Downloading dive \(record.index) at \(String(format: "%08X", address)) fingerprint=\(hex(record.fingerprint))")
         let diveStarted = Date()
-        let dive = try client.download(address: address, size: maxDiveSize, compression: true)
-        try Data(dive).write(to: url, options: .atomic)
-        let elapsed = Date().timeIntervalSince(diveStarted)
-        completed += 1
-        downloaded += 1
-        log(String(format: "Wrote %@ (%d bytes, %.1fs)", url.path, dive.count, elapsed))
-        let batchElapsed = Date().timeIntervalSince(batchStarted)
-        let average = batchElapsed / Double(max(downloaded, 1))
-        let remaining = max(selected.count - completed, 0)
-        log(String(format: "Progress %d/%d selected, %.1fs/downloaded dive avg, estimated %.1f minutes remaining in batch", completed, selected.count, average, (average * Double(remaining)) / 60.0))
+        do {
+            let dive = try downloadDive(client: client, record: record, records: records, address: address)
+            try Data(dive).write(to: url, options: .atomic)
+            let elapsed = Date().timeIntervalSince(diveStarted)
+            completed += 1
+            downloaded += 1
+            log(String(format: "Wrote %@ (%d bytes, %.1fs)", url.path, dive.count, elapsed))
+            let batchElapsed = Date().timeIntervalSince(batchStarted)
+            let average = batchElapsed / Double(max(downloaded, 1))
+            let remaining = max(selected.count - completed, 0)
+            log(String(format: "Progress %d/%d selected, %.1fs/downloaded dive avg, estimated %.1f minutes remaining in batch", completed, selected.count, average, (average * Double(remaining)) / 60.0))
+        } catch {
+            if continueOnError {
+                completed += 1
+                failed.append(record.index)
+                log("Failed dive \(record.index); continuing because --continue-on-error is set: \(error)")
+                continue
+            }
+            throw error
+        }
     }
     log(String(format: "Batch complete in %.1fs", Date().timeIntervalSince(batchStarted)))
+    if !failed.isEmpty {
+        log("Failed dives in this batch: \(failed.map(String.init).joined(separator: ","))")
+    }
     let afterDownloaded = logStats(label: "After download", records: records, pages: pages, outputDir: outputDir)
     if let next = firstMissingIndex(records: records, downloaded: afterDownloaded) {
         let nextCount = count ?? limit ?? selected.count
