@@ -1,0 +1,349 @@
+# Dive Computer Log Viewer
+
+Download and view dive logs from dive computers in small, resumable batches
+without building one huge in-memory export.
+
+The current working downloader targets a Shearwater Perdix AI using the native
+macOS CoreBluetooth tool in `tools/shearwater_download.swift`. The viewer is
+named more generally so additional dive computers can be added later. The
+original `dctool` BLE path was tested, but this machine's Homebrew `dctool`
+reports `Unsupported operation` for BLE scan/open. `dctool` is still used after
+download to convert raw dives to XML.
+
+## Current Status
+
+- Device: Shearwater Perdix AI
+- Verified device metadata:
+  - Device alias: `perdix-ai-1`
+  - Firmware: `V102 Classic`
+  - Model: `06`
+- Verified manifest: `546` active dives across `12` manifest pages
+- Download format: one raw `.bin` file per dive
+- XML conversion: verified with `dctool parse`
+
+## Why This Helps
+
+Some dive apps build one large XML/database object during import. With hundreds
+of dives and rich sample data, that can fail with an out-of-memory error.
+
+This downloader writes each dive as soon as it finishes. If the Perdix Bluetooth
+session times out, already-written dives remain on disk and the next run resumes
+from the first missing dive for that computer.
+
+## Requirements
+
+- macOS with Bluetooth enabled
+- Swift toolchain: `swift` / `swiftc`
+- `dctool` from `libdivecomputer` for XML conversion
+- Perdix AI in Bluetooth/upload mode when prompted
+
+Verified locally:
+
+```sh
+dctool version
+# libdivecomputer version 0.9.0
+```
+
+## Build
+
+Compile the downloader once and reuse the binary during repeated Bluetooth
+windows:
+
+```sh
+swiftc tools/shearwater_download.swift -o /tmp/shearwater_download
+```
+
+## Recommended Download Workflow
+
+Run a batch. If `--start` is omitted, the downloader scans the raw output
+directory for the connected computer and starts at the first missing dive.
+
+```sh
+/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw
+```
+
+At startup it prompts:
+
+```text
+Put Perdix into Bluetooth/upload mode, then press Enter to start scanning.
+```
+
+Put the Perdix into Bluetooth/upload mode, then press Enter.
+
+Before downloading, it logs a summary like:
+
+```text
+Before download: found 546 dives in 12 manifest pages; 17 downloaded, 529 remaining; next missing dive is 18
+```
+
+After the batch, it logs an updated summary and a ready-to-run next command:
+
+```text
+After download: found 546 dives in 12 manifest pages; 27 downloaded, 519 remaining; next missing dive is 28
+Next batch command: /tmp/shearwater_download --target Perdix --start 28 --count 10 --skip-existing --output-dir ... --log-dir logs
+```
+
+At the end of each batch it prompts to convert that batch to XML. The default is
+yes:
+
+```text
+Convert this batch to XML? [Y/n]
+```
+
+Before exiting, the downloader sends the Shearwater shutdown command that asks
+the Perdix to leave Bluetooth/upload mode.
+
+## Useful Commands
+
+List all available dive records without downloading dive bodies:
+
+```sh
+/tmp/shearwater_download --target Perdix --list-only --output-dir data/raw
+```
+
+Download a specific batch:
+
+```sh
+/tmp/shearwater_download --target Perdix --start 28 --count 10 --skip-existing --output-dir data/raw
+```
+
+Download one dive as a validation run:
+
+```sh
+/tmp/shearwater_download --target Perdix --count 1 --skip-existing --output-dir data/raw
+```
+
+Skip the startup Bluetooth prompt for unattended/scripted runs:
+
+```sh
+/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw --no-prompt
+```
+
+Skip the XML conversion prompt:
+
+```sh
+/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw --no-convert-prompt
+```
+
+Override the XML output directory:
+
+```sh
+/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw --xml-dir data/xml
+```
+
+Each downloader run writes a timestamped log to `logs/` by default. Override it
+with:
+
+```sh
+/tmp/shearwater_download --target Perdix --count 10 --skip-existing --output-dir data/raw --log-dir logs
+```
+
+## Convert Existing Raw Files
+
+Convert all downloaded raw files to readable XML:
+
+```sh
+python3 scripts/convert_raw_to_xml.py
+```
+
+Convert one raw file:
+
+```sh
+python3 scripts/convert_raw_to_xml.py data/raw/perdix-ai.0001.6A3F87F6.bin
+```
+
+The XML includes dive metadata plus per-sample profile data such as time, depth,
+temperature, setpoint, deco/NDL/TTS, and tank pressures when present.
+
+## Local Viewer
+
+Start the viewer server:
+
+```sh
+python3 scripts/serve_viewer.py
+```
+
+Open:
+
+```text
+http://127.0.0.1:8080
+```
+
+The viewer reads `data/xml/**/*.xml` on demand. You can keep downloading and
+converting dives in another terminal; click **Refresh** in the browser to rescan
+the XML directory.
+
+Use the **Computer** filter to narrow the list by dive computer. Existing
+root-level XML files are labeled `Shearwater Perdix AI`. XML files inside a
+device directory are labeled from that directory name, including the serial when
+available.
+
+Click any dive list column header to sort ascending or descending. The selected
+sort column and direction are saved locally.
+
+Drag the divider between the dive list and detail pane to resize the layout. The
+chosen list width is saved locally.
+
+Use the **Metric** / **Imperial** toggle in the toolbar to switch displayed
+depth, temperature, and pressure units. The XML stays metric; conversion happens
+in the browser.
+
+Use the **Light** / **Dark** toggle to switch themes. The viewer defaults to the
+system color preference and remembers your choice locally.
+
+The selected dive uses a single combined profile chart. Use the checkboxes to
+show or hide depth, temperature, and tank pressure overlays. Each selected
+overlay is scaled to its own range so values with very different units can be
+compared visually; colored range labels show the min/max for each series. Move
+the pointer over the chart to scrub the dive; the readout shows the nearest
+sample's exact time, depth, temperature, setpoint, TTS, and tank pressure.
+
+The viewer also exposes decompression and gas-use fields when present:
+
+- Deco model, gradient factors, current/last deco status, and max TTS.
+- TTS can be selected as a chart overlay.
+- PPO2 sensor readings can be selected as chart overlays if the XML contains
+  `<ppo2>` samples, including multiple sensors for CCR dives.
+- SAC/RMV is calculated only when enough information is available. Pressure drop
+  alone is not enough; tank volume and average depth are required. If tank
+  volume is missing from the XML, the viewer marks SAC/RMV unavailable instead
+  of guessing a cylinder size.
+
+The summary endpoint only loads lightweight dive metadata:
+
+```text
+GET /api/dives
+```
+
+Full sample data is loaded only for the selected dive:
+
+```text
+GET /api/dive/<relative-xml-file>
+```
+
+This keeps browser memory usage low even when the computer has hundreds of
+dives.
+
+## Output Layout
+
+Downloaded files are grouped by dive computer when possible. The existing
+Perdix AI files have been migrated into a local alias directory:
+
+```text
+data/raw/perdix-ai-1/perdix-ai.0001.<fingerprint>.bin
+data/raw/perdix-ai-1/perdix-ai.0002.<fingerprint>.bin
+```
+
+```text
+data/xml/perdix-ai-1/perdix-ai.0001.<fingerprint>.xml
+data/xml/perdix-ai-1/perdix-ai.0002.<fingerprint>.xml
+```
+
+For a newly connected computer, the downloader creates a per-computer directory
+based on the target name and serial:
+
+```text
+data/raw/shearwater-perdix-<serial>/perdix-ai.0001.<fingerprint>.bin
+data/xml/shearwater-perdix-<serial>/perdix-ai.0001.<fingerprint>.xml
+```
+
+That means you can pause the Perdix AI download with 200 dives remaining,
+connect a different Perdix, and it will start from that computer's first missing
+dive in its own directory. When you reconnect the original AI, the downloader
+finds matching files in `perdix-ai-1` and resumes from the first missing AI dive.
+
+The next-batch command printed by the downloader still points at the base
+directories:
+
+```text
+--output-dir data/raw --xml-dir data/xml
+```
+
+Keep using the base directories. The downloader chooses the correct per-computer
+subdirectory after it reads the connected computer's serial and manifest.
+
+Logs:
+
+```text
+logs/shearwater-download-YYYYMMDDTHHMMSSZ.log
+```
+
+## Diagnostic Tools
+
+Scan for nearby BLE devices:
+
+```sh
+swift tools/ble_scan.swift 20
+```
+
+Inspect the Perdix BLE service and characteristic:
+
+```sh
+swift tools/ble_inspect.swift Perdix 20
+```
+
+Read harmless device metadata:
+
+```sh
+swift tools/shearwater_probe.swift Perdix
+```
+
+## Device Metadata
+
+The native probe currently reads the same harmless identifiers used by
+libdivecomputer's Shearwater support:
+
+```text
+0x8010 serial number
+0x8011 firmware version
+0x8021 log upload metadata / logbook base address
+0x8050 hardware version, if supported
+0x8060 model number
+```
+
+Confirmed values from this Perdix AI:
+
+```text
+serial: redacted
+firmware: V102 Classic
+model: 06
+logupload: 018000000000020080
+```
+
+The protocol also supports writing time values for time synchronization, but
+this project does not currently write settings to the computer. Broader device
+settings may exist, but they are not documented in libdivecomputer's public
+Shearwater support as stable readable identifiers. Treat unknown identifiers as
+reverse-engineering work and keep probes read-only unless there is a clear
+reason to write.
+
+## Speed Notes
+
+The transfer is slow because the Perdix protocol is block-by-block over BLE:
+
+```text
+host requests block N
+Perdix sends block N
+host requests block N+1
+Perdix sends block N+1
+```
+
+The downloader already uses `writeWithoutResponse` when available and removes
+avoidable host-side sleeps. The remaining bottleneck is the device/protocol
+round-trip, not CPU. Multithreading the BLE download is unlikely to help and
+could desynchronize the transfer.
+
+Practical tips:
+
+- Keep the Perdix close to the Mac.
+- Use `/tmp/shearwater_download`, not `swift tools/shearwater_download.swift`,
+  during repeated runs.
+- Use `--skip-existing` on every batch.
+- Use batch sizes that fit inside the Perdix Bluetooth timeout.
+- Convert XML after each batch or offline from existing raw files.
+
+## Older Wrapper
+
+`scripts/perdix_fetch.py` is the original wrapper around `dctool download`.
+It remains in the repo for reference, but the current working download path on
+this machine is `/tmp/shearwater_download`.

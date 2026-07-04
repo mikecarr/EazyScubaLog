@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dive Computer Log Viewer</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Dive Computer Log Viewer</h1>
+      <p id="status">Loading dives...</p>
+    </div>
+    <div class="actions">
+      <div class="unit-toggle" role="group" aria-label="Units">
+        <button id="metric" class="active" type="button">Metric</button>
+        <button id="imperial" type="button">Imperial</button>
+      </div>
+      <div class="theme-toggle" role="group" aria-label="Theme">
+        <button id="light-theme" type="button">Light</button>
+        <button id="dark-theme" type="button">Dark</button>
+      </div>
+      <select id="computer-filter" aria-label="Dive computer filter">
+        <option value="">All Computers</option>
+      </select>
+      <input id="search" type="search" placeholder="Search dives">
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="list-pane" aria-label="Dive list">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th><button class="sort" data-sort="number" type="button">#</button></th>
+              <th><button class="sort" data-sort="computer" type="button">Computer</button></th>
+              <th><button class="sort" data-sort="datetime" type="button">Date</button></th>
+              <th><button class="sort" data-sort="divetimeSeconds" type="button">Time</button></th>
+              <th><button class="sort" data-sort="maxDepth" type="button">Max</button></th>
+              <th><button class="sort" data-sort="mode" type="button">Mode</button></th>
+              <th><button class="sort" data-sort="gas" type="button">Gas</button></th>
+              <th><button class="sort" data-sort="sampleCount" type="button">Samples</button></th>
+            </tr>
+          </thead>
+          <tbody id="dives"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div id="splitter" class="splitter" role="separator" aria-label="Resize dive list" aria-orientation="vertical" tabindex="0"></div>
+
+    <section class="detail-pane" aria-label="Dive detail">
+      <div id="empty" class="empty">Select a dive to view details.</div>
+      <article id="detail" class="detail hidden">
+        <div class="detail-head">
+          <div>
+            <h2 id="detail-title"></h2>
+            <p id="detail-subtitle"></p>
+          </div>
+          <a id="xml-link" class="xml-link" href="#" target="_blank" rel="noreferrer">XML</a>
+        </div>
+
+        <div id="metrics" class="metrics"></div>
+        <div id="tanks" class="tanks"></div>
+        <div id="scrubber" class="scrubber hidden"></div>
+
+        <section class="combined-chart">
+          <div class="chart-head">
+            <div>
+              <h3>Dive Profile</h3>
+              <p class="chart-note">Each overlay uses its own range; scrub the chart for exact values.</p>
+            </div>
+            <div id="series-controls" class="series-controls"></div>
+          </div>
+          <canvas id="profile-chart" width="1100" height="430"></canvas>
+        </section>
+
+        <details class="samples">
+          <summary>Sample table</summary>
+          <div class="sample-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Depth</th>
+                  <th>Temp</th>
+                  <th>Setpoint</th>
+                  <th>TTS</th>
+                  <th>Deco</th>
+                  <th>PPO2</th>
+                  <th>Pressure</th>
+                </tr>
+              </thead>
+              <tbody id="samples"></tbody>
+            </table>
+          </div>
+        </details>
+      </article>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

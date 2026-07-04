@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+
+data/raw/**/*.bin
+data/xml/**/*.xml
+logs/*.log

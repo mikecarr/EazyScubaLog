@@ -1,0 +1,32 @@
+# Continuity
+
+- 2026-07-04T07:24:30-0700 [agent] Workspace was empty and not a git repository.
+- 2026-07-04T07:24:30-0700 [agent] Verified local `dctool` is installed and reports `libdivecomputer version 0.9.0`.
+- 2026-07-04T07:24:30-0700 [agent] Added initial Perdix AI raw-download wrapper around `dctool` plus README. Strategy is to persist one raw dive file at a time to avoid large in-memory XML exports.
+- 2026-07-04T07:26:17-0700 [agent] Verified `scripts/perdix_fetch.py` with `py_compile` and CLI help commands. Added `.gitignore` for raw dive binaries, logs, and Python cache files.
+- 2026-07-04T07:30:28-0700 [agent] With Perdix AI in Bluetooth mode, macOS CoreBluetooth saw the `Perdix` peripheral. Homebrew `dctool` BLE scan/open failed with `Unsupported operation`.
+- 2026-07-04T07:30:28-0700 [agent] Added Swift CoreBluetooth scan, inspect, probe, and download tools. Probe successfully read the redacted serial, firmware `V102 Classic`, model `06`, logupload `018000000000020080`.
+- 2026-07-04T07:30:28-0700 [agent] Compiled native downloader, but first `--limit 1` download attempt timed out at startup after the Perdix stopped advertising. User needs to re-enter Bluetooth mode before rerunning.
+- 2026-07-04T07:37:15-0700 [agent] User ran native downloader with `--limit 1`; first raw dive was written to `data/raw/perdix-ai.0001.6A3F87F6.bin` at 47,872 bytes.
+- 2026-07-04T07:37:15-0700 [agent] User expected more than 48 records. Fixed native downloader to read multiple 48-record manifest pages and added `--list-only` support for listing all available record fingerprints without downloading dive bodies.
+- 2026-07-04T07:37:15-0700 [user] Ran `--list-only`; Perdix reported 12 manifest pages and `546 active dive records`.
+- 2026-07-04T07:37:15-0700 [agent] Added `--skip-existing` to native downloader and recompiled `/tmp/shearwater_download`.
+- 2026-07-04T07:37:15-0700 [agent] Optimized CoreBluetooth writes to use `writeWithoutResponse` when available and added per-dive/batch timing output. Recompiled `/tmp/shearwater_download`.
+- 2026-07-04T07:37:15-0700 [agent] Added timestamped run logging to native downloader via `--log-dir` defaulting to `logs/`; recompiled `/tmp/shearwater_download`.
+- 2026-07-04T07:37:15-0700 [agent] Verified raw `.bin` files can be converted with `dctool -d 'Shearwater Perdix AI' parse -o ...`. Added `scripts/convert_raw_to_xml.py`; converted 10 downloaded raw dives to XML in `data/xml/`.
+- 2026-07-04T07:37:15-0700 [agent] Added downloader stats summaries before/after batches, command-line logging, auto-start at first missing dive when `--start` is omitted, and end-of-run next batch command. Recompiled `/tmp/shearwater_download`. Current local raw count observed: 17.
+- 2026-07-04T07:37:15-0700 [agent] Added startup prompt to native downloader: asks user to put Perdix in Bluetooth/upload mode and waits for Enter before scanning. Added `--no-prompt` to bypass. Recompiled `/tmp/shearwater_download`.
+- 2026-07-04T07:37:15-0700 [agent] Added end-of-batch prompt `Convert this batch to XML? [Y/n]` defaulting to yes. Conversion uses `dctool parse` for selected existing raw files. Added `--xml-dir`, `--overwrite-xml`, and `--no-convert-prompt`. Recompiled `/tmp/shearwater_download`.
+- 2026-07-04T07:37:15-0700 [agent] Rewrote README around the current native CoreBluetooth downloader workflow, including build, auto-resume, stats/logging, XML conversion, diagnostics, and speed notes.
+- 2026-07-04T07:37:15-0700 [agent] Added end-of-run Shearwater shutdown command `{0x2E,0x90,0x20,0x00}` to ask the Perdix to leave Bluetooth/upload mode before exit; applies to list-only and normal batch completion. Recompiled `/tmp/shearwater_download`.
+- 2026-07-04T07:37:15-0700 [agent] Updated README with Device Metadata section. Updated `tools/shearwater_probe.swift` to optionally read hardware identifier `0x8050`; recompiled `/tmp/shearwater_probe`.
+- 2026-07-04T07:37:15-0700 [agent] Added local HTML/CSS/JS viewer and `scripts/serve_viewer.py`. Viewer exposes `/api/dives` summaries and `/api/dives/<number>` on-demand detail/sample data, reads `data/xml/*.xml`, displays list/detail/charts, and is running at `http://127.0.0.1:8080`. Updated README and `.gitignore`.
+- 2026-07-04T07:37:15-0700 [agent] Added Metric/Imperial toggle to viewer. Browser converts depth, pressure, and temperature display/charts without changing metric XML. Verified `node --check viewer/app.js`.
+- 2026-07-04T07:37:15-0700 [agent] Added chart scrubber to viewer: pointer over depth/temp/pressure charts selects nearest sample, draws shared vertical cursor, and displays time/depth/temp/setpoint/TTS/pressure readout. Verified `node --check viewer/app.js`.
+- 2026-07-04T07:37:15-0700 [agent] Added Light/Dark theme toggle to viewer with CSS variables, themed canvas colors, system-preference default, and `localStorage` persistence. Verified `node --check viewer/app.js`.
+- 2026-07-04T07:37:15-0700 [agent] Replaced separate depth/temp/pressure charts with one combined Dive Profile chart. Added checkbox series controls for depth, temperature, and pressure tanks; scrubber now works in one location. Verified `node --check viewer/app.js`.
+- 2026-07-04T07:37:15-0700 [agent] Updated combined chart to scale each selected series to its own min/max range with colored range labels, making mixed units like depth/temp/pressure readable together. Verified `node --check viewer/app.js`.
+- 2026-07-04T07:37:15-0700 [agent] Added viewer support for deco/TTS summaries and chart overlay, PPO2 sensor chart overlays/scrubber/sample-table display when XML includes `<ppo2>`, and SAC/RMV calculation only when tank volume + avg depth + duration are available. Verified Python/JS syntax.
+- 2026-07-04T07:37:15-0700 [agent] Initialized a git repository at user request. Preparing initial commit of source/docs/tools only; downloaded `data/raw`, `data/xml`, logs, and Python caches are ignored.
+- 2026-07-04T09:17:36-0700 [agent] Added per-computer downloader storage selection based on connected target/serial with legacy root-file resume support for the existing Perdix AI data. Updated viewer API to recursively scan XML directories and select dives by relative XML id so duplicate dive numbers across computers do not conflict.
+- 2026-07-04T09:19:44-0700 [agent] Migrated existing Perdix AI data files from root `data/raw` and `data/xml` into local alias subdirectories. Verified viewer API reports 181 raw files and 160 XML files from the migrated layout.
