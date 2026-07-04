@@ -12,8 +12,15 @@ from pathlib import Path
 DEVICE_NAME = "Shearwater Perdix AI"
 
 
+DEFAULT_RAW_DIR = Path("data/raw")
+
+
 def output_name(raw_file: Path, output_dir: Path) -> Path:
-    return output_dir / (raw_file.stem + ".xml")
+    try:
+        relative = raw_file.relative_to(DEFAULT_RAW_DIR)
+    except ValueError:
+        relative = Path(raw_file.name)
+    return output_dir / relative.parent / (raw_file.stem + ".xml")
 
 
 def convert_file(raw_file: Path, output_dir: Path, overwrite: bool) -> int:
@@ -44,7 +51,7 @@ def main(argv: list[str]) -> int:
         "inputs",
         nargs="*",
         type=Path,
-        help="raw .bin files to convert; defaults to data/raw/*.bin",
+        help="raw .bin files to convert; defaults to data/raw/**/*.bin",
     )
     parser.add_argument(
         "-o",
@@ -60,7 +67,7 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv)
 
-    inputs = args.inputs or sorted(Path("data/raw").glob("*.bin"))
+    inputs = args.inputs or sorted(DEFAULT_RAW_DIR.rglob("*.bin"))
     if not inputs:
         print("No raw .bin files found.", file=sys.stderr)
         return 1
