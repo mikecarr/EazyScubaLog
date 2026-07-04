@@ -222,7 +222,10 @@ device directory are labeled from that directory name, including the serial when
 available.
 
 Click any dive list column header to sort ascending or descending. The selected
-sort column and direction are saved locally.
+sort column and direction are saved locally. The `#` column is a chronological
+display number per dive computer, so each computer's earliest converted dive is
+number `1`. The original computer record number is still preserved in filenames,
+download progress, and the dive detail subtitle.
 
 Drag the divider between the dive list and detail pane to resize the layout. The
 chosen list width is saved locally.

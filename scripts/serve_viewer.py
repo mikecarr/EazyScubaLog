@@ -212,6 +212,8 @@ def parse_summary(path: Path, xml_dir: Path = DEFAULT_XML_DIR) -> dict[str, obje
     return {
         "id": path.relative_to(xml_dir).as_posix(),
         "number": dive_number,
+        "recordNumber": dive_number,
+        "displayNumber": None,
         "computer": computer_from_path(path, xml_dir),
         "fingerprint": fingerprint,
         "file": path.relative_to(xml_dir).as_posix(),
@@ -231,6 +233,43 @@ def parse_summary(path: Path, xml_dir: Path = DEFAULT_XML_DIR) -> dict[str, obje
         "sac": sac_summary(tanks, divetime_seconds, avg_depth),
         "sampleCount": len(samples),
         "sizeBytes": number(text(dive.find("size"))),
+    }
+
+
+def display_number_sort_key(dive: dict[str, object]) -> tuple[int, str, int]:
+    datetime = str(dive.get("datetime") or "")
+    record_number = dive.get("recordNumber") or dive.get("number") or 0
+    if not isinstance(record_number, int):
+        record_number = 0
+    if datetime:
+        return (0, datetime, record_number)
+    return (1, "", -record_number)
+
+
+def assign_display_numbers(dives: list[dict[str, object]]) -> list[dict[str, object]]:
+    by_computer: dict[str, list[dict[str, object]]] = {}
+    for dive in dives:
+        by_computer.setdefault(str(dive.get("computer") or ""), []).append(dive)
+
+    for group in by_computer.values():
+        for index, dive in enumerate(sorted(group, key=display_number_sort_key), start=1):
+            dive["displayNumber"] = index
+
+    return dives
+
+
+def display_number_map(xml_dir: Path) -> dict[str, int]:
+    dives = []
+    for path in xml_files(xml_dir):
+        try:
+            dives.append(parse_summary(path, xml_dir))
+        except Exception:  # noqa: BLE001 - ignored for detail decoration.
+            continue
+    assign_display_numbers(dives)
+    return {
+        str(dive["id"]): int(dive["displayNumber"])
+        for dive in dives
+        if isinstance(dive.get("displayNumber"), int)
     }
 
 
@@ -333,7 +372,8 @@ def summaries(xml_dir: Path, raw_dir: Path) -> dict[str, object]:
         except Exception as exc:  # noqa: BLE001 - returned to local viewer.
             errors.append({"file": path.name, "error": str(exc)})
 
-    dives.sort(key=lambda dive: dive.get("number") or 0)
+    assign_display_numbers(dives)
+    dives.sort(key=lambda dive: (str(dive.get("computer") or ""), dive.get("displayNumber") or 0))
     return {
         "dives": dives,
         "xmlCount": len(dives),
@@ -421,7 +461,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "Dive not found"}, HTTPStatus.NOT_FOUND)
                 return
             try:
-                self.send_json(parse_detail(path, self.xml_dir))
+                detail = parse_detail(path, self.xml_dir)
+                detail["summary"]["displayNumber"] = display_number_map(self.xml_dir).get(str(detail["summary"]["id"]))
+                self.send_json(detail)
             except Exception as exc:  # noqa: BLE001 - returned to local viewer.
                 self.send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
@@ -433,7 +475,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "Dive not found"}, HTTPStatus.NOT_FOUND)
                 return
             try:
-                self.send_json(parse_detail(path, self.xml_dir))
+                detail = parse_detail(path, self.xml_dir)
+                detail["summary"]["displayNumber"] = display_number_map(self.xml_dir).get(str(detail["summary"]["id"]))
+                self.send_json(detail)
             except Exception as exc:  # noqa: BLE001 - returned to local viewer.
                 self.send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return

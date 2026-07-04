@@ -5,12 +5,16 @@ const state = {
   view: localStorage.getItem("dclvView") || "dives",
   query: "",
   computer: "",
-  sortKey: localStorage.getItem("dclvSortKey") || "number",
+  sortKey: localStorage.getItem("dclvSortKey") || "displayNumber",
   sortDir: localStorage.getItem("dclvSortDir") || "asc",
   units: localStorage.getItem("perdixUnits") || "metric",
   theme: localStorage.getItem("perdixTheme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
   visibleSeries: new Set(["depth", "temperature"]),
 };
+
+if (state.sortKey === "number") {
+  state.sortKey = "displayNumber";
+}
 
 const els = {
   status: document.getElementById("status"),
@@ -132,6 +136,15 @@ function fmtDate(value) {
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+function diveNumber(dive) {
+  return dive?.displayNumber ?? dive?.number;
+}
+
+function recordNumberText(dive) {
+  if (!dive?.recordNumber || dive.recordNumber === diveNumber(dive)) return "";
+  return `Record ${dive.recordNumber}`;
+}
+
 function updateUnitToggle() {
   els.metric.classList.toggle("active", state.units === "metric");
   els.imperial.classList.toggle("active", state.units === "imperial");
@@ -208,7 +221,9 @@ function matchesQuery(dive) {
   if (!state.query) return true;
   const haystack = [
     dive.computer,
+    dive.displayNumber,
     dive.number,
+    dive.recordNumber,
     dive.datetime,
     dive.divetime,
     dive.maxDepth,
@@ -222,6 +237,7 @@ function matchesQuery(dive) {
 function sortValue(dive, key) {
   if (key === "gas") return gasLabel(dive);
   if (key === "datetime") return dive.datetime || "";
+  if (key === "displayNumber") return diveNumber(dive);
   return dive[key];
 }
 
@@ -281,7 +297,7 @@ function renderList() {
     const selected = state.selected && state.selected.summary.id === dive.id ? " class=\"selected\"" : "";
     return `
       <tr data-id="${dive.id}"${selected}>
-        <td>${fmt(dive.number)}</td>
+        <td title="${recordNumberText(dive)}">${fmt(diveNumber(dive))}</td>
         <td>${fmt(dive.computer).replace("Shearwater ", "")}</td>
         <td>${fmt(dive.datetime)}</td>
         <td>${fmt(dive.divetime)}</td>
@@ -352,8 +368,8 @@ function renderSummary() {
   els.summaryMetrics.innerHTML = [
     metric("Total Dives", fmt(dives.length)),
     metric("Total Time Underwater", fmtTotalTime(totalTime)),
-    metric("Longest Dive", longest ? `${fmtSeconds(longest.divetimeSeconds)} · Dive ${fmt(longest.number)}` : "—"),
-    metric("Deepest Dive", deepest ? `${fmtDepth(deepest.maxDepth, 1)} · Dive ${fmt(deepest.number)}` : "—"),
+    metric("Longest Dive", longest ? `${fmtSeconds(longest.divetimeSeconds)} · Dive ${fmt(diveNumber(longest))}` : "—"),
+    metric("Deepest Dive", deepest ? `${fmtDepth(deepest.maxDepth, 1)} · Dive ${fmt(diveNumber(deepest))}` : "—"),
     metric("Average Dive Time", fmtTotalTime(avgDiveTime)),
     metric("Average Max Depth", fmtDepth(avgMaxDepth, 1)),
     metric("First Dive", fmtDate(dates[0])),
@@ -362,8 +378,8 @@ function renderSummary() {
   ].join("");
 
   els.summaryHighlights.innerHTML = [
-    summaryRow("Longest dive", longest ? `Dive ${fmt(longest.number)} · ${fmtSeconds(longest.divetimeSeconds)} · ${fmtDate(longest.datetime)}` : "—"),
-    summaryRow("Deepest dive", deepest ? `Dive ${fmt(deepest.number)} · ${fmtDepth(deepest.maxDepth, 1)} · ${fmtDate(deepest.datetime)}` : "—"),
+    summaryRow("Longest dive", longest ? `Dive ${fmt(diveNumber(longest))} · ${fmtSeconds(longest.divetimeSeconds)} · ${fmtDate(longest.datetime)}` : "—"),
+    summaryRow("Deepest dive", deepest ? `Dive ${fmt(diveNumber(deepest))} · ${fmtDepth(deepest.maxDepth, 1)} · ${fmtDate(deepest.datetime)}` : "—"),
     summaryRow("Total profile samples", fmt(totalSamples)),
     summaryRow("Computers", fmt(countBy(dives, (dive) => dive.computer).length)),
   ].join("");
@@ -395,7 +411,7 @@ async function selectDive(id) {
   state.selected = await response.json();
   renderList();
   renderDetail(state.selected);
-  els.status.textContent = `Loaded dive ${state.selected.summary.number}.`;
+  els.status.textContent = `Loaded dive ${diveNumber(state.selected.summary)}.`;
 }
 
 function metric(label, value) {
@@ -414,8 +430,8 @@ function renderDetail(detail) {
       : "Unavailable";
   els.empty.classList.add("hidden");
   els.detail.classList.remove("hidden");
-  els.title.textContent = `Dive ${dive.number}`;
-  els.subtitle.textContent = `${dive.datetime || "Unknown date"} · ${dive.fingerprint || ""}`;
+  els.title.textContent = `Dive ${diveNumber(dive)}`;
+  els.subtitle.textContent = [dive.datetime || "Unknown date", recordNumberText(dive), dive.fingerprint || ""].filter(Boolean).join(" · ");
   els.xmlLink.href = `/xml/${dive.file}`;
 
   els.metrics.innerHTML = [
@@ -775,7 +791,7 @@ document.querySelectorAll("button.sort").forEach((button) => {
       state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
     } else {
       state.sortKey = key;
-      state.sortDir = key === "datetime" || key === "number" ? "desc" : "asc";
+      state.sortDir = key === "datetime" ? "desc" : "asc";
     }
     localStorage.setItem("dclvSortKey", state.sortKey);
     localStorage.setItem("dclvSortDir", state.sortDir);
