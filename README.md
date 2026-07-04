@@ -194,6 +194,11 @@ The viewer reads `data/xml/**/*.xml` on demand. You can keep downloading and
 converting dives in another terminal; click **Refresh** in the browser to rescan
 the XML directory.
 
+Use the **Summary** view to see aggregate logbook stats such as total dives,
+total time underwater, longest dive, deepest dive, average dive time, average max
+depth, first/most recent dive, mode breakdown, and gas breakdown. The summary
+respects the current computer filter and search text.
+
 Use the **Computer** filter to narrow the list by dive computer. Existing
 root-level XML files are labeled `Shearwater Perdix AI`. XML files inside a
 device directory are labeled from that directory name, including the serial when

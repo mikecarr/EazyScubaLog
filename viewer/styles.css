@@ -87,6 +87,7 @@ h1 {
   align-items: center;
 }
 
+.view-toggle,
 .unit-toggle,
 .theme-toggle {
   display: flex;
@@ -97,6 +98,7 @@ h1 {
   background: var(--field);
 }
 
+.view-toggle button,
 .unit-toggle button,
 .theme-toggle button {
   height: 34px;
@@ -106,6 +108,7 @@ h1 {
   background: var(--field);
 }
 
+.view-toggle button.active,
 .unit-toggle button.active,
 .theme-toggle button.active {
   color: #fff;
@@ -149,9 +152,24 @@ button {
 }
 
 .list-pane,
-.detail-pane {
+.detail-pane,
+.summary-pane {
   min-width: 0;
   overflow: auto;
+}
+
+body[data-view="summary"] .layout {
+  display: block;
+}
+
+body[data-view="summary"] .list-pane,
+body[data-view="summary"] .splitter,
+body[data-view="summary"] .detail-pane {
+  display: none;
+}
+
+body:not([data-view="summary"]) .summary-pane {
+  display: none;
 }
 
 .list-pane {
@@ -188,6 +206,11 @@ body.resizing {
 
 .detail-pane {
   padding: 18px;
+}
+
+.summary-pane {
+  height: calc(100vh - 76px);
+  padding: 20px;
 }
 
 .table-wrap,
@@ -298,7 +321,8 @@ tbody tr.selected {
 }
 
 .metrics,
-.tanks {
+.tanks,
+.summary-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
@@ -306,7 +330,8 @@ tbody tr.selected {
 }
 
 .metric,
-.tank {
+.tank,
+.summary-card {
   padding: 10px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -323,6 +348,62 @@ tbody tr.selected {
 .value {
   display: block;
   margin-top: 3px;
+  font-weight: 700;
+}
+
+.summary-head {
+  margin: 0 auto 16px;
+  max-width: 1180px;
+}
+
+.summary-head h2 {
+  font-size: 22px;
+}
+
+.summary-head p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.summary-metrics,
+.summary-grid {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-card {
+  padding: 14px;
+}
+
+.summary-card h3 {
+  margin-bottom: 10px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--soft-line);
+}
+
+.summary-row:last-child {
+  border-bottom: 0;
+}
+
+.summary-row span:first-child {
+  color: var(--muted);
+}
+
+.summary-row span:last-child {
+  text-align: right;
   font-weight: 700;
 }
 
@@ -442,6 +523,14 @@ canvas {
   .layout {
     grid-template-columns: 1fr;
     height: auto;
+  }
+
+  .summary-pane {
+    height: auto;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .splitter {

@@ -13,6 +13,10 @@
       <p id="status">Loading dives...</p>
     </div>
     <div class="actions">
+      <div class="view-toggle" role="group" aria-label="View">
+        <button id="dives-view" class="active" type="button">Dives</button>
+        <button id="summary-view" type="button">Summary</button>
+      </div>
       <div class="unit-toggle" role="group" aria-label="Units">
         <button id="metric" class="active" type="button">Metric</button>
         <button id="imperial" type="button">Imperial</button>
@@ -99,6 +103,26 @@
           </div>
         </details>
       </article>
+    </section>
+
+    <section id="summary-pane" class="summary-pane" aria-label="Dive summary">
+      <div class="summary-head">
+        <div>
+          <h2>Logbook Summary</h2>
+          <p id="summary-subtitle"></p>
+        </div>
+      </div>
+      <div id="summary-metrics" class="summary-metrics"></div>
+      <div class="summary-grid">
+        <section class="summary-card">
+          <h3>Highlights</h3>
+          <div id="summary-highlights"></div>
+        </section>
+        <section class="summary-card">
+          <h3>Breakdown</h3>
+          <div id="summary-breakdown"></div>
+        </section>
+      </div>
     </section>
   </main>
 

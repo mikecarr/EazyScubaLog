@@ -1,6 +1,7 @@
 const state = {
   dives: [],
   selected: null,
+  view: localStorage.getItem("dclvView") || "dives",
   query: "",
   computer: "",
   sortKey: localStorage.getItem("dclvSortKey") || "number",
@@ -15,6 +16,8 @@ const els = {
   refresh: document.getElementById("refresh"),
   search: document.getElementById("search"),
   computerFilter: document.getElementById("computer-filter"),
+  divesView: document.getElementById("dives-view"),
+  summaryView: document.getElementById("summary-view"),
   splitter: document.getElementById("splitter"),
   metric: document.getElementById("metric"),
   imperial: document.getElementById("imperial"),
@@ -32,6 +35,10 @@ const els = {
   xmlLink: document.getElementById("xml-link"),
   seriesControls: document.getElementById("series-controls"),
   profileChart: document.getElementById("profile-chart"),
+  summarySubtitle: document.getElementById("summary-subtitle"),
+  summaryMetrics: document.getElementById("summary-metrics"),
+  summaryHighlights: document.getElementById("summary-highlights"),
+  summaryBreakdown: document.getElementById("summary-breakdown"),
 };
 
 function fmt(value, suffix = "") {
@@ -108,9 +115,31 @@ function fmtSeconds(seconds) {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
+function fmtTotalTime(seconds) {
+  if (typeof seconds !== "number" || Number.isNaN(seconds)) return "—";
+  const totalMinutes = Math.round(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours ? `${hours}h ${String(minutes).padStart(2, "0")}m` : `${minutes}m`;
+}
+
+function fmtDate(value) {
+  if (!value) return "—";
+  const date = new Date(value.replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
 function updateUnitToggle() {
   els.metric.classList.toggle("active", state.units === "metric");
   els.imperial.classList.toggle("active", state.units === "imperial");
+}
+
+function applyView() {
+  document.body.dataset.view = state.view;
+  els.divesView.classList.toggle("active", state.view === "dives");
+  els.summaryView.classList.toggle("active", state.view === "summary");
+  if (state.view === "summary") renderSummary();
 }
 
 function themeColor(name) {
@@ -208,6 +237,10 @@ function compareDives(a, b) {
   return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" }) * direction;
 }
 
+function filteredDives() {
+  return state.dives.filter(matchesQuery);
+}
+
 function updateSortHeaders() {
   document.querySelectorAll("button.sort").forEach((button) => {
     button.classList.toggle("asc", button.dataset.sort === state.sortKey && state.sortDir === "asc");
@@ -223,6 +256,7 @@ async function loadSummaries() {
   state.dives = data.dives || [];
   renderComputerFilter();
   renderList();
+  renderSummary();
   const errors = data.errors?.length ? `, ${data.errors.length} parse errors` : "";
   els.status.textContent = `${data.xmlCount} XML dives, ${data.rawCount} raw dives${errors}. Last refreshed ${new Date().toLocaleTimeString()}`;
 }
@@ -240,7 +274,7 @@ function renderComputerFilter() {
 
 function renderList() {
   updateSortHeaders();
-  const rows = state.dives.filter(matchesQuery).sort(compareDives).map((dive) => {
+  const rows = filteredDives().sort(compareDives).map((dive) => {
     const selected = state.selected && state.selected.summary.id === dive.id ? " class=\"selected\"" : "";
     return `
       <tr data-id="${dive.id}"${selected}>
@@ -256,6 +290,70 @@ function renderList() {
     `;
   }).join("");
   els.dives.innerHTML = rows || `<tr><td colspan="8">No matching dives.</td></tr>`;
+}
+
+function countBy(dives, getter) {
+  const counts = new Map();
+  for (const dive of dives) {
+    const key = getter(dive) || "Unknown";
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+}
+
+function summaryRow(label, value) {
+  return `<div class="summary-row"><span>${label}</span><span>${value}</span></div>`;
+}
+
+function renderSummary() {
+  if (!els.summaryMetrics) return;
+  const dives = filteredDives();
+  const totalTime = dives.reduce((sum, dive) => sum + (dive.divetimeSeconds || 0), 0);
+  const totalSamples = dives.reduce((sum, dive) => sum + (dive.sampleCount || 0), 0);
+  const deepest = dives.reduce((best, dive) => (dive.maxDepth || 0) > (best?.maxDepth || 0) ? dive : best, null);
+  const longest = dives.reduce((best, dive) => (dive.divetimeSeconds || 0) > (best?.divetimeSeconds || 0) ? dive : best, null);
+  const depthValues = dives.map((dive) => dive.maxDepth).filter((value) => typeof value === "number");
+  const timeValues = dives.map((dive) => dive.divetimeSeconds).filter((value) => typeof value === "number");
+  const avgMaxDepth = depthValues.length
+    ? depthValues.reduce((sum, value) => sum + value, 0) / depthValues.length
+    : null;
+  const avgDiveTime = timeValues.length
+    ? timeValues.reduce((sum, value) => sum + value, 0) / timeValues.length
+    : null;
+  const dates = dives
+    .map((dive) => dive.datetime)
+    .filter(Boolean)
+    .sort((a, b) => String(a).localeCompare(String(b)));
+  const scope = state.computer || "All computers";
+  const query = state.query ? ` matching "${state.query}"` : "";
+
+  els.summarySubtitle.textContent = `${dives.length} dives from ${scope}${query}`;
+  els.summaryMetrics.innerHTML = [
+    metric("Total Dives", fmt(dives.length)),
+    metric("Total Time Underwater", fmtTotalTime(totalTime)),
+    metric("Longest Dive", longest ? `${fmtSeconds(longest.divetimeSeconds)} · Dive ${fmt(longest.number)}` : "—"),
+    metric("Deepest Dive", deepest ? `${fmtDepth(deepest.maxDepth, 1)} · Dive ${fmt(deepest.number)}` : "—"),
+    metric("Average Dive Time", fmtTotalTime(avgDiveTime)),
+    metric("Average Max Depth", fmtDepth(avgMaxDepth, 1)),
+    metric("First Dive", fmtDate(dates[0])),
+    metric("Most Recent Dive", fmtDate(dates[dates.length - 1])),
+    metric("Samples", fmt(totalSamples)),
+  ].join("");
+
+  els.summaryHighlights.innerHTML = [
+    summaryRow("Longest dive", longest ? `Dive ${fmt(longest.number)} · ${fmtSeconds(longest.divetimeSeconds)} · ${fmtDate(longest.datetime)}` : "—"),
+    summaryRow("Deepest dive", deepest ? `Dive ${fmt(deepest.number)} · ${fmtDepth(deepest.maxDepth, 1)} · ${fmtDate(deepest.datetime)}` : "—"),
+    summaryRow("Total profile samples", fmt(totalSamples)),
+    summaryRow("Computers", fmt(countBy(dives, (dive) => dive.computer).length)),
+  ].join("");
+
+  const modeRows = countBy(dives, (dive) => dive.mode).slice(0, 4)
+    .map(([mode, count]) => summaryRow(`Mode: ${mode}`, count))
+    .join("");
+  const gasRows = countBy(dives, gasLabel).slice(0, 4)
+    .map(([gas, count]) => summaryRow(`Gas: ${gas}`, count))
+    .join("");
+  els.summaryBreakdown.innerHTML = modeRows + gasRows || summaryRow("No dives", "—");
 }
 
 async function selectDive(id) {
@@ -617,11 +715,25 @@ els.refresh.addEventListener("click", () => {
 els.search.addEventListener("input", (event) => {
   state.query = event.target.value.trim().toLowerCase();
   renderList();
+  renderSummary();
 });
 
 els.computerFilter.addEventListener("change", (event) => {
   state.computer = event.target.value;
   renderList();
+  renderSummary();
+});
+
+els.divesView.addEventListener("click", () => {
+  state.view = "dives";
+  localStorage.setItem("dclvView", state.view);
+  applyView();
+});
+
+els.summaryView.addEventListener("click", () => {
+  state.view = "summary";
+  localStorage.setItem("dclvView", state.view);
+  applyView();
 });
 
 document.querySelectorAll("button.sort").forEach((button) => {
@@ -644,6 +756,7 @@ els.metric.addEventListener("click", () => {
   localStorage.setItem("perdixUnits", state.units);
   updateUnitToggle();
   renderList();
+  renderSummary();
   if (state.selected) renderDetail(state.selected);
 });
 
@@ -652,6 +765,7 @@ els.imperial.addEventListener("click", () => {
   localStorage.setItem("perdixUnits", state.units);
   updateUnitToggle();
   renderList();
+  renderSummary();
   if (state.selected) renderDetail(state.selected);
 });
 
@@ -688,6 +802,7 @@ els.dives.addEventListener("click", (event) => {
 });
 
 applyTheme();
+applyView();
 initSplitter();
 updateUnitToggle();
 loadSummaries().catch((error) => {
