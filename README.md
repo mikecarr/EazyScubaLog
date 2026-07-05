@@ -281,10 +281,23 @@ screenshots:
 ?theme=light|dark&view=dives|summary&units=metric|imperial&select=first
 ```
 
-Use the **Summary** view to see aggregate logbook stats such as total dives,
-total time underwater, longest dive, deepest dive, average dive time, average max
-depth, first/most recent dive, mode breakdown, and gas breakdown. The summary
-respects the current computer filter and search text.
+Use the **Summary** view to see aggregate logbook stats such as estimated unique
+dives, imported records, likely duplicate records, total time underwater,
+longest dive, deepest dive, average dive time, average max depth,
+first/most recent dive, source breakdown, mode breakdown, and gas breakdown.
+The summary respects the current computer filter and search text.
+
+The unique-dive estimate is intentionally approximate. It groups records that
+look like the same dive by start time, duration, max depth, and average depth,
+then uses the richest record in each group for aggregate totals. This helps when
+the same physical dive exists both as a direct Bluetooth import and as a MacDive
+import, or when multiple computers recorded the same dive. It does not yet do a
+full sample-by-sample profile comparison.
+
+For duration-based totals, the Summary excludes unique representative dives with
+missing, zero, or greater-than-six-hour durations. Those records still count as
+imports and unique-dive candidates, but they are treated as duration outliers so
+a bad source duration cannot dominate longest-dive and total-time stats.
 
 Use the **Computer** filter to narrow the list by dive computer. Legacy
 root-level XML files, if present, are labeled `Shearwater Perdix AI`. XML files

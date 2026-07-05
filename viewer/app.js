@@ -4,6 +4,7 @@ const state = {
   dives: [],
   importStatus: null,
   selected: null,
+  loadingSummaries: true,
   view: urlParams.get("view") || localStorage.getItem("dclvView") || "dives",
   query: "",
   computer: "",
@@ -278,20 +279,29 @@ function updateSortHeaders() {
 }
 
 async function loadSummaries() {
+  state.loadingSummaries = true;
   els.status.textContent = "Refreshing...";
-  const response = await fetch("/api/dives", { cache: "no-store" });
-  if (!response.ok) throw new Error(`Failed to load dives: ${response.status}`);
-  const data = await response.json();
-  state.dives = data.dives || [];
-  state.importStatus = data.status || null;
-  renderComputerFilter();
-  renderList();
   renderSummary();
-  const errors = data.errors?.length ? `, ${data.errors.length} parse errors` : "";
-  els.status.textContent = `${data.xmlCount} XML dives, ${data.rawCount} raw dives${errors}. Last refreshed ${new Date().toLocaleTimeString()}`;
-  if (!state.selected && urlParams.get("select") === "first") {
-    const first = filteredDives().sort(compareDives)[0];
-    if (first) await selectDive(first.id);
+  try {
+    const response = await fetch("/api/dives", { cache: "no-store" });
+    if (!response.ok) throw new Error(`Failed to load dives: ${response.status}`);
+    const data = await response.json();
+    state.dives = data.dives || [];
+    state.importStatus = data.status || null;
+    state.loadingSummaries = false;
+    renderComputerFilter();
+    renderList();
+    renderSummary();
+    const errors = data.errors?.length ? `, ${data.errors.length} parse errors` : "";
+    els.status.textContent = `${data.xmlCount} XML dives, ${data.rawCount} raw dives${errors}. Last refreshed ${new Date().toLocaleTimeString()}`;
+    if (!state.selected && urlParams.get("select") === "first") {
+      const first = filteredDives().sort(compareDives)[0];
+      if (first) await selectDive(first.id);
+    }
+  } catch (error) {
+    state.loadingSummaries = false;
+    renderSummary();
+    throw error;
   }
 }
 
@@ -339,6 +349,98 @@ function summaryRow(label, value) {
   return `<div class="summary-row"><span>${label}</span><span>${value}</span></div>`;
 }
 
+const diveTimestampCache = new WeakMap();
+const diveSourceCache = new WeakMap();
+const maxReasonableDiveSeconds = 6 * 60 * 60;
+
+function diveTimestamp(dive) {
+  if (diveTimestampCache.has(dive)) return diveTimestampCache.get(dive);
+  if (!dive.datetime) return null;
+  const normalized = String(dive.datetime)
+    .replace(" ", "T")
+    .replace(/T(\d\d:\d\d:\d\d)\s+([+-]\d\d:\d\d)$/, "T$1$2");
+  const value = new Date(normalized).getTime();
+  const timestamp = Number.isNaN(value) ? null : value;
+  diveTimestampCache.set(dive, timestamp);
+  return timestamp;
+}
+
+function diveSource(dive) {
+  if (diveSourceCache.has(dive)) return diveSourceCache.get(dive);
+  const source = String(dive.computer || "").startsWith("MacDive -") || String(dive.file || "").startsWith("macdive/")
+    ? "MacDive"
+    : "Direct Bluetooth";
+  diveSourceCache.set(dive, source);
+  return source;
+}
+
+function sameDiveEstimate(a, b) {
+  const at = diveTimestamp(a);
+  const bt = diveTimestamp(b);
+  if (at === null || bt === null) return false;
+  const timeClose = Math.abs(at - bt) <= 20 * 60 * 1000;
+  const durationClose = Math.abs((a.divetimeSeconds || 0) - (b.divetimeSeconds || 0)) <= 5 * 60;
+  const maxDepthClose = typeof a.maxDepth === "number" && typeof b.maxDepth === "number"
+    ? Math.abs(a.maxDepth - b.maxDepth) <= 4
+    : true;
+  const avgDepthClose = typeof a.avgDepth === "number" && typeof b.avgDepth === "number"
+    ? Math.abs(a.avgDepth - b.avgDepth) <= 5
+    : true;
+  return timeClose && durationClose && maxDepthClose && avgDepthClose;
+}
+
+function compareSummaryPreference(a, b) {
+  const sampleDiff = (b.sampleCount || 0) - (a.sampleCount || 0);
+  if (sampleDiff) return sampleDiff;
+  const sourceDiff = (diveSource(a) === "MacDive" ? 0 : 1) - (diveSource(b) === "MacDive" ? 0 : 1);
+  if (sourceDiff) return sourceDiff;
+  return String(a.id).localeCompare(String(b.id));
+}
+
+function estimateUniqueDiveGroups(dives) {
+  const timeWindow = 20 * 60 * 1000;
+  const groups = [];
+  const sorted = [...dives].sort((a, b) => (diveTimestamp(a) ?? Number.MAX_SAFE_INTEGER) - (diveTimestamp(b) ?? Number.MAX_SAFE_INTEGER));
+
+  for (const dive of sorted) {
+    const timestamp = diveTimestamp(dive);
+    let matched = null;
+
+    for (let index = groups.length - 1; index >= 0; index -= 1) {
+      const group = groups[index];
+      if (timestamp !== null && group.maxTimestamp !== null && group.maxTimestamp < timestamp - timeWindow) break;
+      if (group.dives.some((candidate) => sameDiveEstimate(candidate, dive))) {
+        matched = group;
+        break;
+      }
+    }
+
+    if (matched) {
+      matched.dives.push(dive);
+      if (timestamp !== null) {
+        matched.minTimestamp = matched.minTimestamp === null ? timestamp : Math.min(matched.minTimestamp, timestamp);
+        matched.maxTimestamp = matched.maxTimestamp === null ? timestamp : Math.max(matched.maxTimestamp, timestamp);
+      }
+      if (compareSummaryPreference(dive, matched.representative) < 0) matched.representative = dive;
+    } else {
+      groups.push({
+        representative: dive,
+        dives: [dive],
+        minTimestamp: timestamp,
+        maxTimestamp: timestamp,
+      });
+    }
+  }
+
+  return groups;
+}
+
+function hasReasonableDiveTime(dive) {
+  return typeof dive.divetimeSeconds === "number"
+    && dive.divetimeSeconds > 0
+    && dive.divetimeSeconds <= maxReasonableDiveSeconds;
+}
+
 function formatNumberRange(numbers) {
   if (!numbers?.length) return "—";
   const sorted = [...numbers].sort((a, b) => a - b);
@@ -360,29 +462,49 @@ function formatNumberRange(numbers) {
 function renderSummary() {
   if (!els.summaryMetrics) return;
   const dives = filteredDives();
-  const totalTime = dives.reduce((sum, dive) => sum + (dive.divetimeSeconds || 0), 0);
-  const totalSamples = dives.reduce((sum, dive) => sum + (dive.sampleCount || 0), 0);
-  const deepest = dives.reduce((best, dive) => (dive.maxDepth || 0) > (best?.maxDepth || 0) ? dive : best, null);
-  const longest = dives.reduce((best, dive) => (dive.divetimeSeconds || 0) > (best?.divetimeSeconds || 0) ? dive : best, null);
-  const depthValues = dives.map((dive) => dive.maxDepth).filter((value) => typeof value === "number");
-  const timeValues = dives.map((dive) => dive.divetimeSeconds).filter((value) => typeof value === "number");
+  if (state.loadingSummaries && !dives.length) {
+    els.summarySubtitle.textContent = "Loading dive summaries...";
+    els.summaryMetrics.innerHTML = [
+      metric("Estimated Unique Dives", "—"),
+      metric("Imported Records", "—"),
+      metric("Likely Duplicate Records", "—"),
+      metric("Unique Time Underwater", "—"),
+    ].join("");
+    els.summaryHighlights.innerHTML = summaryRow("Status", "Refreshing XML index");
+    els.summaryBreakdown.innerHTML = summaryRow("Status", "Waiting for data");
+    els.summaryImportStatus.innerHTML = summaryRow("Status", "Waiting for import status");
+    return;
+  }
+  const uniqueGroups = estimateUniqueDiveGroups(dives);
+  const uniqueDives = uniqueGroups.map((group) => group.representative);
+  const durationDives = uniqueDives.filter(hasReasonableDiveTime);
+  const ignoredDurationOutliers = uniqueDives.length - durationDives.length;
+  const duplicateRecords = Math.max(dives.length - uniqueGroups.length, 0);
+  const totalTime = durationDives.reduce((sum, dive) => sum + (dive.divetimeSeconds || 0), 0);
+  const totalSamples = uniqueDives.reduce((sum, dive) => sum + (dive.sampleCount || 0), 0);
+  const deepest = uniqueDives.reduce((best, dive) => (dive.maxDepth || 0) > (best?.maxDepth || 0) ? dive : best, null);
+  const longest = durationDives.reduce((best, dive) => (dive.divetimeSeconds || 0) > (best?.divetimeSeconds || 0) ? dive : best, null);
+  const depthValues = uniqueDives.map((dive) => dive.maxDepth).filter((value) => typeof value === "number");
+  const timeValues = durationDives.map((dive) => dive.divetimeSeconds);
   const avgMaxDepth = depthValues.length
     ? depthValues.reduce((sum, value) => sum + value, 0) / depthValues.length
     : null;
   const avgDiveTime = timeValues.length
     ? timeValues.reduce((sum, value) => sum + value, 0) / timeValues.length
     : null;
-  const dates = dives
+  const dates = uniqueDives
     .map((dive) => dive.datetime)
     .filter(Boolean)
     .sort((a, b) => String(a).localeCompare(String(b)));
   const scope = state.computer || "All computers";
   const query = state.query ? ` matching "${state.query}"` : "";
 
-  els.summarySubtitle.textContent = `${dives.length} dives from ${scope}${query}`;
+  els.summarySubtitle.textContent = `${fmt(uniqueGroups.length)} estimated unique dives from ${fmt(dives.length)} imported records · ${scope}${query}`;
   els.summaryMetrics.innerHTML = [
-    metric("Total Dives", fmt(dives.length)),
-    metric("Total Time Underwater", fmtTotalTime(totalTime)),
+    metric("Estimated Unique Dives", fmt(uniqueGroups.length)),
+    metric("Imported Records", fmt(dives.length)),
+    metric("Likely Duplicate Records", fmt(duplicateRecords)),
+    metric("Unique Time Underwater", fmtTotalTime(totalTime)),
     metric("Longest Dive", longest ? `${fmtSeconds(longest.divetimeSeconds)} · Dive ${fmt(diveNumber(longest))}` : "—"),
     metric("Deepest Dive", deepest ? `${fmtDepth(deepest.maxDepth, 1)} · Dive ${fmt(diveNumber(deepest))}` : "—"),
     metric("Average Dive Time", fmtTotalTime(avgDiveTime)),
@@ -395,24 +517,34 @@ function renderSummary() {
   els.summaryHighlights.innerHTML = [
     summaryRow("Longest dive", longest ? `Dive ${fmt(diveNumber(longest))} · ${fmtSeconds(longest.divetimeSeconds)} · ${fmtDate(longest.datetime)}` : "—"),
     summaryRow("Deepest dive", deepest ? `Dive ${fmt(diveNumber(deepest))} · ${fmtDepth(deepest.maxDepth, 1)} · ${fmtDate(deepest.datetime)}` : "—"),
-    summaryRow("Total profile samples", fmt(totalSamples)),
-    summaryRow("Computers", fmt(countBy(dives, (dive) => dive.computer).length)),
+    summaryRow("Unique profile samples", fmt(totalSamples)),
+    summaryRow("Visible computer groups", fmt(countBy(dives, (dive) => dive.computer).length)),
+    summaryRow("Largest duplicate group", fmt(Math.max(0, ...uniqueGroups.map((group) => group.dives.length)))),
+    summaryRow("Ignored duration outliers", fmt(ignoredDurationOutliers)),
+    summaryRow("Duplicate estimate basis", "time, duration, depth"),
   ].join("");
 
-  const modeRows = countBy(dives, (dive) => dive.mode).slice(0, 4)
+  const modeRows = countBy(uniqueDives, (dive) => dive.mode).slice(0, 4)
     .map(([mode, count]) => summaryRow(`Mode: ${mode}`, count))
     .join("");
-  const gasRows = countBy(dives, gasLabel).slice(0, 4)
+  const gasRows = countBy(uniqueDives, gasLabel).slice(0, 4)
     .map(([gas, count]) => summaryRow(`Gas: ${gas}`, count))
     .join("");
-  els.summaryBreakdown.innerHTML = modeRows + gasRows || summaryRow("No dives", "—");
+  const sourceRows = countBy(dives, diveSource)
+    .map(([source, count]) => summaryRow(`Source: ${source}`, count))
+    .join("");
+  els.summaryBreakdown.innerHTML = sourceRows + modeRows + gasRows || summaryRow("No dives", "—");
 
   const status = state.importStatus || {};
   const failedNumbers = (status.failedDives || []).map((dive) => dive.number);
+  const directXmlCount = dives.filter((dive) => diveSource(dive) === "Direct Bluetooth").length;
+  const macDiveXmlCount = dives.filter((dive) => diveSource(dive) === "MacDive").length;
   els.summaryImportStatus.innerHTML = [
     summaryRow("Manifest records", fmt(status.manifestCount)),
     summaryRow("Raw dives downloaded", fmt(status.downloadedRawCount)),
-    summaryRow("XML dives converted", fmt(state.dives.length)),
+    summaryRow("Visible direct XML records", fmt(directXmlCount)),
+    summaryRow("Visible MacDive XML records", fmt(macDiveXmlCount)),
+    summaryRow("All XML records", fmt(state.dives.length)),
     summaryRow("Missing raw records", fmt(status.missingRawCount)),
     summaryRow("Known failed records", formatNumberRange(failedNumbers)),
     summaryRow("Last failure", status.lastFailure || "—"),
