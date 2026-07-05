@@ -227,6 +227,23 @@ python3 scripts/convert_raw_to_xml.py data/raw/perdix-ai.0001.6A3F87F6.bin
 The XML includes dive metadata plus per-sample profile data such as time, depth,
 temperature, setpoint, deco/NDL/TTS, and tank pressures when present.
 
+## Import MacDive XML
+
+If you have an existing MacDive export, import it into the viewer as a separate
+source:
+
+```sh
+python3 scripts/import_macdive_xml.py ~/Desktop/Macdive.xml --output-dir data/xml/macdive
+```
+
+The importer streams the MacDive XML file, converts imperial exports to the
+metric values expected by the viewer, and writes one generated XML file per dive
+under `data/xml/macdive/`. These generated XML files are ignored by git.
+
+MacDive imports are labeled separately in the computer filter, for example
+`MacDive - Shearwater Teric ...`, so they can be compared with direct Bluetooth
+downloads without overwriting raw computer exports.
+
 ## Local Viewer
 
 Start the viewer server:

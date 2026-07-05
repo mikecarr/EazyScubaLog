@@ -19,7 +19,7 @@ VIEWER_DIR = REPO_ROOT / "viewer"
 DEFAULT_XML_DIR = REPO_ROOT / "data" / "xml"
 DEFAULT_RAW_DIR = REPO_ROOT / "data" / "raw"
 DEFAULT_LOG_DIR = REPO_ROOT / "logs"
-DIVE_FILE_RE = re.compile(r"perdix-ai\.(\d{4})\.([0-9A-Fa-f]+)\.xml$")
+DIVE_FILE_RE = re.compile(r"(?:perdix-ai|macdive)\.(\d{4,6})\.([0-9A-Fa-f]+)\.xml$")
 RAW_FILE_RE = re.compile(r"perdix-ai\.(\d{4})\.([0-9A-Fa-f]+)\.bin$")
 DEFAULT_COMPUTER = "Shearwater Perdix AI"
 
@@ -48,7 +48,7 @@ def parse_minutes(value: str) -> int | None:
 
 
 def xml_files(xml_dir: Path) -> list[Path]:
-    return sorted(xml_dir.rglob("perdix-ai.*.*.xml"))
+    return sorted(xml_dir.rglob("*.xml"))
 
 
 def raw_count(raw_dir: Path) -> int:
@@ -209,12 +209,14 @@ def parse_summary(path: Path, xml_dir: Path = DEFAULT_XML_DIR) -> dict[str, obje
     divetime_seconds = parse_minutes(text(dive.find("divetime")))
     avg_depth = number(text(dive.find("avgdepth"))) or average_sample_depth(samples)
 
+    computer = text(dive.find("computer")) or computer_from_path(path, xml_dir)
+
     return {
         "id": path.relative_to(xml_dir).as_posix(),
         "number": dive_number,
         "recordNumber": dive_number,
         "displayNumber": None,
-        "computer": computer_from_path(path, xml_dir),
+        "computer": computer,
         "fingerprint": fingerprint,
         "file": path.relative_to(xml_dir).as_posix(),
         "datetime": text(dive.find("datetime")),
