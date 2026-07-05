@@ -36,6 +36,29 @@ download to convert raw dives to XML.
 - Download format: one raw `.bin` file per dive
 - XML conversion: verified with `dctool parse`
 
+## Manifest vs Downloadable Data
+
+The manifest is an index of dive records advertised by the computer. It is not
+proof that every indexed dive body is still readable. On the original Perdix AI
+test computer, the manifest reported `546` active records, but records after the
+last successfully downloaded range began returning protocol rejection `7F3531`
+even when retried with manifest-bounded sizes.
+
+The working assumption is that these are stale manifest entries pointing at log
+storage that has wrapped or been overwritten by the dive computer's circular
+memory. The downloader treats this as recoverable:
+
+- Successfully downloaded raw files are kept.
+- `--skip-existing` resumes from missing records without re-reading good dives.
+- `--continue-on-error` records failures and keeps moving through the batch.
+- The viewer Summary tab reports manifest count, raw count, missing records, and
+  known failed records from the logs.
+
+This is documented as observed behavior, not a confirmed Shearwater protocol
+guarantee. If an unavailable record is later proven recoverable, the raw/XML
+layout still allows that individual dive to be filled in without changing the
+rest of the logbook.
+
 ## Why This Helps
 
 Some dive apps build one large XML/database object during import. With hundreds
