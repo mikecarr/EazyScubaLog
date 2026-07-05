@@ -208,7 +208,7 @@ final class ShearwaterClient: NSObject, CBCentralManagerDelegate, CBPeripheralDe
     func shutdownBluetoothMode() {
         do {
             try sendWithoutResponse([0x2E, 0x90, 0x20, 0x00])
-            log("Sent shutdown command to leave Bluetooth/upload mode")
+            log("Sent Bluetooth shutdown command; if the computer remains in upload mode, exit it manually")
         } catch {
             log("Failed to send Bluetooth shutdown command: \(error)")
         }

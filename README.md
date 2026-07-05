@@ -148,8 +148,10 @@ yes:
 Convert this batch to XML? [Y/n]
 ```
 
-Before exiting, the downloader sends the Shearwater shutdown command that asks
-the computer to leave Bluetooth/upload mode.
+Before exiting, the downloader attempts to send a Shearwater shutdown command.
+In observed testing this does not reliably make the computer leave
+Bluetooth/upload mode, so exit upload mode manually on the computer when the run
+finishes.
 
 ## Useful Commands
 
