@@ -901,6 +901,9 @@ func chooseDevice(_ devices: [DiscoveredDevice]) throws -> DiscoveredDevice {
 
 func defaultDctoolDevice(for target: String) -> String {
     let lower = target.lowercased()
+    if lower.contains("teric") {
+        return "Shearwater Teric"
+    }
     if lower.contains("petrel") {
         return "Shearwater Petrel 3"
     }

@@ -30,6 +30,8 @@ scan/open. `dctool` is still used after download to convert raw dives to XML.
 - Tested direct BLE download:
   - Shearwater Perdix AI
   - Shearwater Petrel 3
+- Tested BLE manifest listing:
+  - Shearwater Teric: `293` active records across `7` manifest pages
 - Current local archive, ignored by git:
   - `511` raw `.bin` files
   - `511` converted XML files
