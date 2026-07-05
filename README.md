@@ -18,23 +18,34 @@ The goal is to make export incremental and recoverable:
   logbook is still in progress.
 - Avoid building one huge in-memory export object.
 
-The current working downloader targets a Shearwater Perdix AI using the native
-macOS CoreBluetooth tool in `tools/shearwater_download.swift`. The viewer is
-named more generally so additional dive computers can be added later. The
-original `dctool` BLE path was tested, but this machine's Homebrew `dctool`
-reports `Unsupported operation` for BLE scan/open. `dctool` is still used after
-download to convert raw dives to XML.
+The current working downloader uses the native macOS CoreBluetooth tool in
+`tools/shearwater_download.swift`. It scans for Shearwater-compatible BLE
+computers, prompts for a choice when multiple computers are nearby, and stores
+downloads separately per computer. The original `dctool` BLE path was tested,
+but this machine's Homebrew `dctool` reports `Unsupported operation` for BLE
+scan/open. `dctool` is still used after download to convert raw dives to XML.
 
 ## Current Status
 
-- Device: Shearwater Perdix AI
-- Verified device metadata:
-  - Device alias: `perdix-ai-1`
-  - Firmware: `V102 Classic`
-  - Model: `06`
-- Verified manifest: `546` active dives across `12` manifest pages
+- Tested direct BLE download:
+  - Shearwater Perdix AI
+  - Shearwater Petrel 3
+- Current local archive, ignored by git:
+  - `511` raw `.bin` files
+  - `511` converted XML files
+  - Perdix AI: `491` downloaded/converted dives
+  - Petrel 3: `20` downloaded/converted dives
+- Perdix AI observed manifest:
+  - `546` active records across `12` manifest pages
+  - Records `492-546` consistently reject body download with `7F3531`
+  - Working assumption: stale manifest entries after circular log memory wrap
 - Download format: one raw `.bin` file per dive
 - XML conversion: verified with `dctool parse`
+- Viewer:
+  - Reads `data/xml/**/*.xml` on demand
+  - Supports per-computer filtering
+  - Uses chronological display numbers per computer
+  - Loads full sample data only for the selected dive
 
 ## Manifest vs Downloadable Data
 
@@ -51,8 +62,10 @@ memory. The downloader treats this as recoverable:
 - Successfully downloaded raw files are kept.
 - `--skip-existing` resumes from missing records without re-reading good dives.
 - `--continue-on-error` records failures and keeps moving through the batch.
-- The viewer Summary tab reports manifest count, raw count, missing records, and
-  known failed records from the logs.
+- The viewer Summary tab reports raw/XML counts and known failed records from
+  the logs. Its import-status block is currently log-derived and should be
+  treated as advisory when multiple computers have been imported; per-computer
+  status is a future improvement.
 
 This is documented as observed behavior, not a confirmed Shearwater protocol
 guarantee. If an unavailable record is later proven recoverable, the raw/XML
@@ -64,7 +77,7 @@ rest of the logbook.
 Some dive apps build one large XML/database object during import. With hundreds
 of dives and rich sample data, that can fail with an out-of-memory error.
 
-This downloader writes each dive as soon as it finishes. If the Perdix Bluetooth
+This downloader writes each dive as soon as it finishes. If the Bluetooth
 session times out, already-written dives remain on disk and the next run resumes
 from the first missing dive for that computer.
 
@@ -73,7 +86,7 @@ from the first missing dive for that computer.
 - macOS with Bluetooth enabled
 - Swift toolchain: `swift` / `swiftc`
 - `dctool` from `libdivecomputer` for XML conversion
-- Perdix AI in Bluetooth/upload mode when prompted
+- Shearwater dive computer in Bluetooth/upload mode when prompted
 
 Verified locally:
 
@@ -134,7 +147,7 @@ Convert this batch to XML? [Y/n]
 ```
 
 Before exiting, the downloader sends the Shearwater shutdown command that asks
-the Perdix to leave Bluetooth/upload mode.
+the computer to leave Bluetooth/upload mode.
 
 ## Useful Commands
 
@@ -239,10 +252,10 @@ total time underwater, longest dive, deepest dive, average dive time, average ma
 depth, first/most recent dive, mode breakdown, and gas breakdown. The summary
 respects the current computer filter and search text.
 
-Use the **Computer** filter to narrow the list by dive computer. Existing
-root-level XML files are labeled `Shearwater Perdix AI`. XML files inside a
-device directory are labeled from that directory name, including the serial when
-available.
+Use the **Computer** filter to narrow the list by dive computer. Legacy
+root-level XML files, if present, are labeled `Shearwater Perdix AI`. XML files
+inside a device directory are labeled from that directory name, including the
+serial when available.
 
 Click any dive list column header to sort ascending or descending. The selected
 sort column and direction are saved locally. The `#` column is a chronological
@@ -316,10 +329,11 @@ data/raw/shearwater-perdix-<serial>/perdix-ai.0001.<fingerprint>.bin
 data/xml/shearwater-perdix-<serial>/perdix-ai.0001.<fingerprint>.xml
 ```
 
-That means you can pause the Perdix AI download with 200 dives remaining,
-connect a different Perdix, and it will start from that computer's first missing
-dive in its own directory. When you reconnect the original AI, the downloader
-finds matching files in `perdix-ai-1` and resumes from the first missing AI dive.
+That means you can pause the Perdix AI download with records remaining, connect
+a different Shearwater computer, and it will start from that computer's first
+missing dive in its own directory. When you reconnect the original AI, the
+downloader finds matching files in `perdix-ai-1` and resumes from the first
+missing AI dive.
 
 The next-batch command printed by the downloader still points at the base
 directories:
@@ -345,16 +359,16 @@ Scan for nearby BLE devices:
 swift tools/ble_scan.swift 20
 ```
 
-Inspect the Perdix BLE service and characteristic:
+Inspect the Shearwater BLE service and characteristic:
 
 ```sh
-swift tools/ble_inspect.swift Perdix 20
+swift tools/ble_inspect.swift Petrel 20
 ```
 
 Read harmless device metadata:
 
 ```sh
-swift tools/shearwater_probe.swift Perdix
+swift tools/shearwater_probe.swift Petrel
 ```
 
 ## Device Metadata
@@ -388,13 +402,14 @@ reason to write.
 
 ## Speed Notes
 
-The transfer is slow because the Perdix protocol is block-by-block over BLE:
+The transfer is slow because the tested Shearwater BLE protocol is
+block-by-block:
 
 ```text
 host requests block N
-Perdix sends block N
+computer sends block N
 host requests block N+1
-Perdix sends block N+1
+computer sends block N+1
 ```
 
 The downloader already uses `writeWithoutResponse` when available and removes
@@ -404,11 +419,11 @@ could desynchronize the transfer.
 
 Practical tips:
 
-- Keep the Perdix close to the Mac.
+- Keep the dive computer close to the Mac.
 - Use `bin/shearwater_download`, not `swift tools/shearwater_download.swift`,
   during repeated runs.
 - Use `--skip-existing` on every batch.
-- Use batch sizes that fit inside the Perdix Bluetooth timeout.
+- Use batch sizes that fit inside the dive computer's Bluetooth timeout.
 - Convert XML after each batch or offline from existing raw files.
 
 ## Older Wrapper
