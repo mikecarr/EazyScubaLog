@@ -35,3 +35,4 @@
 - 2026-07-04T13:10:38-0700 [agent] Updated viewer numbering to use chronological display numbers per dive computer while preserving original computer record numbers for filenames, resume checks, and detail subtitles.
 - 2026-07-05T07:32:10-0700 [agent] Documented observed manifest-vs-downloadable-data behavior: the Perdix AI can advertise active manifest records that reject body downloads, likely stale entries after circular log memory wrap.
 - 2026-07-05T07:35:00-0700 [agent] Updated README status to reflect the current local archive: 491 Perdix AI dives, 20 Petrel 3 dives, 511 raw/XML files total, auto-discovery support, and advisory limitations of log-derived import status with multiple computers.
+- 2026-07-05T07:50:00-0700 [agent] Updated README screenshots from a sanitized demo fixture. Added viewer URL parameters for repeatable screenshots/shareable state and `scripts/serve_viewer.py --log-dir` for isolated import-status logs.

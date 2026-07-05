@@ -363,7 +363,7 @@ def import_status(raw_dir: Path, log_dir: Path = DEFAULT_LOG_DIR) -> dict[str, o
     }
 
 
-def summaries(xml_dir: Path, raw_dir: Path) -> dict[str, object]:
+def summaries(xml_dir: Path, raw_dir: Path, log_dir: Path = DEFAULT_LOG_DIR) -> dict[str, object]:
     dives = []
     errors = []
     for path in xml_files(xml_dir):
@@ -378,7 +378,7 @@ def summaries(xml_dir: Path, raw_dir: Path) -> dict[str, object]:
         "dives": dives,
         "xmlCount": len(dives),
         "rawCount": raw_count(raw_dir),
-        "status": import_status(raw_dir),
+        "status": import_status(raw_dir, log_dir),
         "errors": errors,
     }
 
@@ -403,6 +403,7 @@ def find_xml_by_id(xml_dir: Path, dive_id: str) -> Path | None:
 class ViewerHandler(BaseHTTPRequestHandler):
     xml_dir: Path = DEFAULT_XML_DIR
     raw_dir: Path = DEFAULT_RAW_DIR
+    log_dir: Path = DEFAULT_LOG_DIR
 
     def log_message(self, fmt: str, *args: object) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -451,7 +452,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         route = unquote(parsed.path)
 
         if route == "/api/dives":
-            self.send_json(summaries(self.xml_dir, self.raw_dir))
+            self.send_json(summaries(self.xml_dir, self.raw_dir, self.log_dir))
             return
 
         if route.startswith("/api/dives/"):
@@ -508,15 +509,18 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--xml-dir", type=Path, default=DEFAULT_XML_DIR)
     parser.add_argument("--raw-dir", type=Path, default=DEFAULT_RAW_DIR)
+    parser.add_argument("--log-dir", type=Path, default=DEFAULT_LOG_DIR)
     args = parser.parse_args()
 
     ViewerHandler.xml_dir = args.xml_dir.resolve()
     ViewerHandler.raw_dir = args.raw_dir.resolve()
+    ViewerHandler.log_dir = args.log_dir.resolve()
 
     server = ThreadingHTTPServer((args.host, args.port), ViewerHandler)
     print(f"Serving viewer at http://{args.host}:{args.port}")
     print(f"XML directory: {ViewerHandler.xml_dir}")
     print(f"Raw directory: {ViewerHandler.raw_dir}")
+    print(f"Log directory: {ViewerHandler.log_dir}")
     server.serve_forever()
     return 0
 

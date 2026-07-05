@@ -231,13 +231,19 @@ Start the viewer server:
 python3 scripts/serve_viewer.py
 ```
 
+For alternate data locations, pass explicit directories:
+
+```sh
+python3 scripts/serve_viewer.py --xml-dir data/xml --raw-dir data/raw --log-dir logs
+```
+
 Open:
 
 ```text
 http://127.0.0.1:8080
 ```
 
-Screenshots below use redacted demo values in the visible list/detail fields.
+Screenshots below use a sanitized demo fixture, not local dive data.
 
 ![Dive Computer Log Viewer light theme](docs/screenshots/viewer-light.png)
 
@@ -246,6 +252,13 @@ Screenshots below use redacted demo values in the visible list/detail fields.
 The viewer reads `data/xml/**/*.xml` on demand. You can keep downloading and
 converting dives in another terminal; click **Refresh** in the browser to rescan
 the XML directory.
+
+The viewer accepts optional URL parameters for shareable views and repeatable
+screenshots:
+
+```text
+?theme=light|dark&view=dives|summary&units=metric|imperial&select=first
+```
 
 Use the **Summary** view to see aggregate logbook stats such as total dives,
 total time underwater, longest dive, deepest dive, average dive time, average max

@@ -1,19 +1,30 @@
+const urlParams = new URLSearchParams(window.location.search);
+
 const state = {
   dives: [],
   importStatus: null,
   selected: null,
-  view: localStorage.getItem("dclvView") || "dives",
+  view: urlParams.get("view") || localStorage.getItem("dclvView") || "dives",
   query: "",
   computer: "",
   sortKey: localStorage.getItem("dclvSortKey") || "displayNumber",
   sortDir: localStorage.getItem("dclvSortDir") || "asc",
-  units: localStorage.getItem("perdixUnits") || "metric",
-  theme: localStorage.getItem("perdixTheme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
+  units: urlParams.get("units") || localStorage.getItem("perdixUnits") || "metric",
+  theme: urlParams.get("theme") || localStorage.getItem("perdixTheme") || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
   visibleSeries: new Set(["depth", "temperature"]),
 };
 
 if (state.sortKey === "number") {
   state.sortKey = "displayNumber";
+}
+if (!["dives", "summary"].includes(state.view)) {
+  state.view = "dives";
+}
+if (!["metric", "imperial"].includes(state.units)) {
+  state.units = "metric";
+}
+if (!["light", "dark"].includes(state.theme)) {
+  state.theme = "light";
 }
 
 const els = {
@@ -278,6 +289,10 @@ async function loadSummaries() {
   renderSummary();
   const errors = data.errors?.length ? `, ${data.errors.length} parse errors` : "";
   els.status.textContent = `${data.xmlCount} XML dives, ${data.rawCount} raw dives${errors}. Last refreshed ${new Date().toLocaleTimeString()}`;
+  if (!state.selected && urlParams.get("select") === "first") {
+    const first = filteredDives().sort(compareDives)[0];
+    if (first) await selectDive(first.id);
+  }
 }
 
 function renderComputerFilter() {
